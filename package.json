@@ -1,0 +1,25 @@
+{
+  "name": "iitkbucks",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --watchAll"
+  },
+  "jest": {
+    "testEnvironment": "node"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.19.2",
+    "express": "^4.17.1",
+    "hex-to-binary": "^1.0.1",
+    "nano-time": "^1.0.0",
+    "readline-sync": "^1.4.10",
+    "save": "^2.4.0"
+  },
+  "devDependencies": {
+    "jest": "^26.0.1"
+  }
+}
