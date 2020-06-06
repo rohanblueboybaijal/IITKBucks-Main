@@ -2,7 +2,7 @@ const Input = require('./input');
 const Output = require('./output');
 
 const cryptoHash = require('../util/crypto-hash');
-const { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex } = require('../util/index');
+const { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, isValidSignature } = require('../util/index');
 
 class Transaction {
     constructor({ inputs, outputs, data }) {
@@ -139,6 +139,70 @@ class Transaction {
         }
 
         return {inputs, outputs};
+    }
+
+    outputByteArray(transaction) {
+        var buffer = Buffer.alloc(0);
+        var buf;
+        var list = [buffer, buf];
+
+        for(let i=0; i<transaction.outputs.length; i++) {
+            buf = transaction.outputs[i].outputToByteArray();
+            list = [buffer, buf];
+            buffer = Buffer.concat(list);
+        }
+        
+        return buffer;
+    }
+
+    static isValidTransaction({transaction, unusedOutputs, tempOutputsArray}){
+        var buf = outputByteArray(transaction);
+        const hashed = cryptoHash(buf);
+
+        var inputCoins = 0;
+        var outputCoins = 0;
+
+
+        for(var input of transaction.inputs) {
+
+            var tup = [input.id, input.index];
+            if(unusedOutputs.has(tup) && !tempOutputsArray.has(tup)) {
+
+                tempOutputsArray.set(tup, unusedOutputs[tup]);
+
+                var buffer = Buffer.alloc(0);
+                var list = [buffer, buf];
+
+                buf = Buffer.from(HexToByteArray(input.id));
+                list = [buffer, buf];
+                buffer = Buffer.concat(list);
+
+                buf = Buffer.from(Int32ToBytes(input.index));
+                list = [buffer, buf];
+                buffer = Buffer.concat(list);
+
+                buf = Buffer.from(HexToByteArray(hashed));
+                list = [buffer, buf];
+                buffer = Buffer.concat(list);
+
+                const verifySign = isValidSignature({data:buffer, 
+                                    signature:input.signature,
+                                    publicKey:unusedOutputs[tup].publicKey});
+                
+                if(verifySign) inputCoins += unusedOutputs[tup].coins;
+                else return false;
+            }
+
+            else return false;
+        }
+
+        for(var output of transaction.outputs) {
+            outputCoins += output.coins;
+        }
+
+        if(inputCoins<outputCoins) return false;
+
+        return true;
     }
 }
 
