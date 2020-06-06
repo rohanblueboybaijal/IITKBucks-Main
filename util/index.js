@@ -106,4 +106,18 @@ function HashToNumber(hash) {
     return ans;
 }
 
-module.exports = { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, HashToNumber };
+function isValidSignature({data, signature, publicKey}) {
+
+    const isVerified = crypto.verify(
+        'sha256',
+        Buffer.from(data), {
+            key: publicKey,
+            padding: crypto.constants.RSA_PKCS_PSS_PADDING,
+        },
+        Buffer.from(signature, 'hex')
+    );
+
+    return isVerified;
+}
+
+module.exports = { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, HashToNumber, isValidSignature };
