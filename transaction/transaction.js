@@ -87,7 +87,7 @@ class Transaction {
         var inputs = [];
 
         for(let j=0; j<numInput; j++) {
-            console.log(i);
+            //console.log(i);
 
             buf = buffer.slice(i, i+32);
             i = i+32;
@@ -118,7 +118,7 @@ class Transaction {
         var outputs = [];
 
         for(let j=0; j<numOutput; j++) {
-            console.log(i);
+            //console.log(i);
 
             buf = buffer.slice(i, i+8);
             i = i+8;
