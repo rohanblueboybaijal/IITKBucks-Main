@@ -2,12 +2,15 @@ const fs = require('fs');
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const readlineSync = require('readline-sync');
 const Input = require('./transaction/input');
 const Output = require('./transaction/output');
 const Transaction = require('./transaction/transaction');
 
+const MyURL = 'rohanblueboybaijal';
 var PEERS = [];
-peerString = fs.readFileSync('peers.json','utf8');
+var potentialPeers = ['http://localhost:3000'];
+const peerString = fs.readFileSync('peers.json','utf8');
 if(peerString) {
     var data = JSON.parse(peerString);
     for (peer of data) {
@@ -31,6 +34,35 @@ const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended : true}));
 
+while(PEERS.length<5 && potentialPeers.length>0) {
+    let potentialPeer = potentialPeers.pop();
+    let obj = {};
+    obj["url"] = MyURL;
+    axios.post(potentialPeer + '/newPeer', obj)
+        .then((res) => {
+            if(res.status==200) {
+                PEERS.push(potentialPeer);
+            }
+            else {
+                const response = axios.get(potentialPeer + '/getPeers');
+                let yetAnotherPeerList =  JSON.parse(response.data);
+                for(let yetAnotherPeer of yetAnotherPeerList) {
+                    if(!potentialPeers.includes(yetAnotherPeer)) {
+                        potentialPeers.push(yetAnotherPeer);
+                    }
+                }
+            }
+        })
+        .catch((err) => {
+            console.log('Error occurred while contacting peer');
+            console.log(err);
+        })
+}
+// Add an async function to write the peers to the file
+fs.writeFile('peers.json', JSON.stringify(PEERS), function(err) {
+    console.log(err);
+});
+
 app.get('/getBlock/:blockIndex', (req, res) => {
     var index = req.params.blockIndex;
     var path = 'blocks/block' + index + '.dat';
@@ -47,10 +79,17 @@ app.get('/getPendingTransactions', (req, res) => {
 
 app.post('/newPeer', (req, res) => {
     const peer = req.body.url;
-    res.send(`Received ${peer}`);
-    PEERS.push(peer);
-    var jsonString = JSON.stringify(PEERS);
-    fs.appendFileSync('./peers.json',jsonString);
+    if(PEERS.length<5) {
+        res.status(200);
+        res.send(`Received ${peer}`);
+        PEERS.push(peer);
+        var jsonString = JSON.stringify(PEERS);
+        fs.appendFileSync('./peers.json',jsonString);
+    }
+    else {
+        res.status(500);
+        res.send('Peer list full');
+    }
 });
 
 app.get('/getPeers', (req, res) => {
