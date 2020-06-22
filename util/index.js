@@ -120,4 +120,15 @@ function isValidSignature({data, signature, publicKey}) {
     return isVerified;
 }
 
-module.exports = { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, HashToNumber, isValidSignature };
+function getIndexOf({object, array}) {
+    var index = -1;
+    var objectString = JSON.stringify(object);
+    for(let i=0; i<array.length; i++) {
+        if(objectString == JSON.stringify(array[i])) {
+            return i;
+        }
+    }
+    return index;
+}
+
+module.exports = { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, HashToNumber, isValidSignature, getIndexOf };
