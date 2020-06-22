@@ -15,7 +15,7 @@ class Transaction {
             this.id = cryptoHash(this.data);
         }
         else {
-            this.data = data;
+            this.data = Uint8Array.from(data);
             const {inputs, outputs} = this.byteArrayToTransaction();
             this.inputs = inputs;
             this.outputs = outputs;
@@ -141,13 +141,33 @@ class Transaction {
         return {inputs, outputs};
     }
 
+    outputToByteArray(output) {
+        var buf;
+        var buffer = Buffer.alloc(0);
+        var list = [buffer, buf];
+
+        buf = Buffer.from(Int64ToBytes(BigInt(output.coins)));
+        list = [buffer, buf];
+        buffer = Buffer.concat(list);
+
+        buf = Buffer.from(Int32ToBytes(output.publicKeyLength));
+        list = [buffer, buf];
+        buffer = Buffer.concat(list);
+
+        buf = Buffer.from(output.publicKey);
+        list = [buffer,buf];
+        buffer = Buffer.concat(list);
+
+        return buffer;
+    }
+
     outputByteArray(transaction) {
         var buffer = Buffer.alloc(0);
         var buf;
         var list = [buffer, buf];
 
         for(let i=0; i<transaction.outputs.length; i++) {
-            buf = transaction.outputs[i].outputToByteArray();
+            buf = outputToByteArray(transaction.outputs[i]);
             list = [buffer, buf];
             buffer = Buffer.concat(list);
         }
@@ -165,7 +185,7 @@ class Transaction {
 
         for(var input of transaction.inputs) {
 
-            var tup = [input.id, input.index];
+            var tup = JSON.stringify([input.id, input.index]);
             if(unusedOutputs.has(tup) && !tempOutputsArray.has(tup)) {
 
                 tempOutputsArray.set(tup, unusedOutputs[tup]);
