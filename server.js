@@ -6,6 +6,8 @@ const readlineSync = require('readline-sync');
 const Input = require('./transaction/input');
 const Output = require('./transaction/output');
 const Transaction = require('./transaction/transaction');
+const Block = require('./blockchain/block');
+const {getIndexOf} =  require('./util');
 
 const MyURL = 'rohanblueboybaijal';
 var PEERS = [];
@@ -23,12 +25,46 @@ var pendingTransactions = [];
 if(pendingString) {
     var tempArray = JSON.parse(pendingString);
     for(let object of tempArray) {
-        var temp = {};
-        temp["inputs"] = object.inputs;
-        temp["outputs"] = object.outputs;
+        
+        var inputs = [];
+        for(input of object.inputs) {
+            var tempInput = new Input({
+                            id : input.id,
+                            index : input.index,
+                            signatureLength : input.signatureLength,
+                            signature : input.signatureLength
+                        });
+            inputs.push(tempInput);
+        }
+        var outputs = [];
+        for(output of object.outputs) {
+            var tempOutput = new Output({
+                            coins : output.coins,
+                            publicKeyLength : output.publicKeyLength,
+                            publicKey : output.publicKey
+                        });
+            outputs.push(tempOutput);
+        }
+        var temp = new Transaction({inputs:inputs, outputs:outputs, data:null});
         pendingTransactions.push(temp);
+        console.log(temp);
     }
 }
+
+var unusedOutputs = new Map();
+const unusedOutputString = fs.readFileSync('./unusedOutputs.json', 'utf8') ;
+if(unusedOutputString) {
+    unusedOutputs = new Map(JSON.parse(unusedOutputString));
+    for([key, temp] of unusedOutputs) {
+        var val = new Output({
+                        coins : temp.coins,
+                        publicKeyLength : temp.publicKeyLength,
+                        publicKey : temp.publicKey
+                    });
+        unusedOutputs.set(key, val);
+    }
+}
+
 
 const app = express();
 app.use(bodyParser.json());
@@ -58,10 +94,10 @@ while(PEERS.length<5 && potentialPeers.length>0) {
             console.log(err);
         })
 }
-// Add an async function to write the peers to the file
 fs.writeFile('peers.json', JSON.stringify(PEERS), function(err) {
     console.log(err);
 });
+
 
 app.get('/getBlock/:blockIndex', (req, res) => {
     var index = req.params.blockIndex;
@@ -71,11 +107,13 @@ app.get('/getBlock/:blockIndex', (req, res) => {
     res.send(data);
 });
 
+
 app.get('/getPendingTransactions', (req, res) => {
     res.set('Content-Type', 'application/json');
     var data = JSON.stringify(pendingTransactions);
     res.send(data);
 });
+
 
 app.post('/newPeer', (req, res) => {
     const peer = req.body.url;
@@ -92,11 +130,13 @@ app.post('/newPeer', (req, res) => {
     }
 });
 
+
 app.get('/getPeers', (req, res) => {
     var peerList = {};
     peerList["peers"] = PEERS;
     res.send(JSON.stringify(peerList));
 });
+
 
 var binaryParser = bodyParser.raw({limit:1000000, type:'application/octet-stream'});
 app.post('/newBlock', binaryParser, (req,res) => {
@@ -104,20 +144,68 @@ app.post('/newBlock', binaryParser, (req,res) => {
     let files = fs.readdirSync('./blocks');
     const blockNum = files.length + 1;
     fs.writeFileSync('./blocks/block' + blockNum.toString() + '.dat', blockData);
+    const block = new Block({index:null, parentHash:null, target:null,
+                            transactions:null, blockBinaryData : blockData });
+    processBlock(block); //function should be called once block has been validated
     res.send("Received");
 });
 
+
 app.post('/newTransaction', (req,res) => {
     var data = req.body;
-    var temp = {};
-    temp["inputs"] = data.inputs;
-    temp["outputs"] = data.outputs;
-    pendingTransactions.push(temp);
+    var inputs = [];
+    for(let temp of data.inputs) {
+        var input = new Input({
+                        id : temp.id,
+                        index : temp.index,
+                        signatureLength : temp.signatureLength,
+                        signature : temp.signature
+                    });
+        inputs.push(input);
+    }
+
+    var outputs = [];
+    for(let temp of data.outputs) {
+        var output = new Output({
+                        coins : temp.coins,
+                        publicKeyLength : temp.publicKeyLength,
+                        publicKey : temp.publicKey
+                    });
+        outputs.push(output);
+    }
+
+    var transaction = new Transaction({ 
+                        inputs:inputs,
+                        outputs:outputs,
+                        data:null
+                    });
+    pendingTransactions.push(transaction);
     var jsonString = JSON.stringify(pendingTransactions);
     fs.writeFileSync('pending.json', jsonString);
     res.send("Received Transaction");
 });
 
+
 app.listen(8000, () => {
     console.log('Server started on port 8000');
 });
+
+function processBlock(block) {
+    for(transaction of block.transactions) {
+        var index = getIndexOf(transaction, pendingTransactions);
+        if(index != -1) {
+            pendingTransactions.splice(index, 1);
+
+            for(input of transaction.inputs) {
+                var key = JSON.stringify([input.id, input.index]);
+                unusedOutputs.delete(key);
+            }
+
+            var outputs = transaction.outputs;
+            for(let j=0; j<outputs.length; j++) {
+                var key = JSON.stringify([transaction.id, j]);
+                unusedOutputs.set(key, outputs[j]);
+            }
+       }
+    }
+}
