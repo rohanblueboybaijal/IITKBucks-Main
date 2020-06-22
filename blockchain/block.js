@@ -5,15 +5,19 @@ const cryptoHash = require('../util/crypto-hash');
 const { Int32ToBytes, HexToByteArray, ByteToInt, ByteArrayToHex } = require('../util');
 
 class Block {
-    constructor({ index, parentHash, hash, target, timestamp, nonce, data, binaryData }) {
+    constructor({ index, parentHash, /*hash,*/ target, /*timestamp, nonce,*/ transactions, blockBinaryData }) {
             this.index = index;
             this.parentHash = parentHash;
-            this.hash = hash;
+            this.hash = null;
             this.target = target;
-            this.timestamp = timestamp;
-            this.nonce = nonce;
-            this.data = data;
-            this.binaryData = binaryData
+            this.timestamp = null;
+            this.nonce = null;
+            this.transactions = transactions;
+            this.blockBinaryData = blockBinaryData;
+
+            if(blockBinaryData) {
+                this.byteArrayToBlock();
+            }
 
     }
 
@@ -40,7 +44,7 @@ class Block {
     }
 
     byteArrayToBlock() {
-        var buffer = Buffer.from(this.binaryData);
+        var buffer = Buffer.from(this.blockBinaryData);
         var buf;
         var i=0;
 
