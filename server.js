@@ -52,7 +52,6 @@ if(pendingString) {
         }
         var temp = new Transaction({inputs:inputs, outputs:outputs, data:null});
         pendingTransactions.push(temp);
-        console.log(temp);
     }
 }
 
@@ -225,6 +224,19 @@ function processBlock(block) {
     }
 }
 
-function requestBlock(blockNum) {
-    axios.get()
+function requestBlock(blockNum, peer) {
+    const url = peer + '/getBlock/' + blockNum;
+    axios({
+        method: 'get',
+        url : url,
+        responseType:'application/octet-stream'
+    })
+        .then(function(res) {
+            console.log(res);
+        })
+        .catch( function(err) {
+            console.log(err);
+        });
 }
+
+//requestBlock(1, 'http://localhost:3000');
