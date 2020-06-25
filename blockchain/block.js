@@ -89,7 +89,7 @@ class Block {
             transactions.push(transaction);
         }
 
-        this.data = transactions;
+        this.transactions = transactions;
     }
 
 }

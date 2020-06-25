@@ -9,6 +9,9 @@ const Transaction = require('./transaction/transaction');
 const Block = require('./blockchain/block');
 const {getIndexOf} =  require('./util');
 
+
+/**********  LOADING PEERS FROM FILE  ***********/ 
+
 const MyURL = 'rohanblueboybaijal';
 var PEERS = [];
 var potentialPeers = ['http://localhost:3000'];
@@ -19,6 +22,8 @@ if(peerString) {
         PEERS.push(peer);
     }
 }
+
+/***********  LOADING PENDING TRANSACTIONS FROM FILE ***********/ 
 
 const pendingString = fs.readFileSync('./pending.json', 'utf8');
 var pendingTransactions = [];
@@ -51,6 +56,8 @@ if(pendingString) {
     }
 }
 
+/***********  LOADING UNUSED OUTPUTS FROM FILE ***********/
+
 var unusedOutputs = new Map();
 const unusedOutputString = fs.readFileSync('./unusedOutputs.json', 'utf8') ;
 if(unusedOutputString) {
@@ -65,10 +72,15 @@ if(unusedOutputString) {
     }
 }
 
+ /*********** START THE APP ***********/
 
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended : true}));
+
+
+
+/*********** UTILITY FOR SENDING REQUEST TO OTHERS TO ADD US AS PEERS ***********/ 
 
 while(PEERS.length<5 && potentialPeers.length>0) {
     let potentialPeer = potentialPeers.pop();
@@ -98,6 +110,7 @@ fs.writeFile('peers.json', JSON.stringify(PEERS), function(err) {
     console.log(err);
 });
 
+/***********  ENDPOINTS FOR COMMUNICATION ***********/
 
 app.get('/getBlock/:blockIndex', (req, res) => {
     var index = req.params.blockIndex;
@@ -190,6 +203,8 @@ app.listen(8000, () => {
     console.log('Server started on port 8000');
 });
 
+/*********** FUNCTIONS FOR PROCESSING BLOCKS AND TRANSACTIONS  ***********/ 
+
 function processBlock(block) {
     for(transaction of block.transactions) {
         var index = getIndexOf(transaction, pendingTransactions);
@@ -208,4 +223,8 @@ function processBlock(block) {
             }
        }
     }
+}
+
+function requestBlock(blockNum) {
+    axios.get()
 }
