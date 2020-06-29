@@ -8,6 +8,7 @@ const Output = require('./transaction/output');
 const Transaction = require('./transaction/transaction');
 const Block = require('./blockchain/block');
 const {getIndexOf} =  require('./util');
+const { isValidBlock } = require('./blockchain/block');
 
 
 /**********  LOADING PEERS FROM FILE  ***********/ 
@@ -229,10 +230,18 @@ function requestBlock(blockNum, peer) {
     axios({
         method: 'get',
         url : url,
-        responseType:'application/octet-stream'
+        responseType:'arraybuffer'
     })
         .then(function(res) {
-            console.log(res);
+            var block = new Block({blockBinaryData : res.data});
+            tempOutputsArray = new Map();
+            if(isValidBlock({
+                    block:block,
+                    unusedOutputs:unusedOutputs,
+                    tempOutputsArray:tempOutputsArray})
+            ) {
+                processBlock(block);
+            }
         })
         .catch( function(err) {
             console.log(err);
