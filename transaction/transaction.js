@@ -3,6 +3,7 @@ const Output = require('./output');
 
 const cryptoHash = require('../util/crypto-hash');
 const { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, isValidSignature } = require('../util/index');
+const { keyIn } = require('readline-sync');
 
 class Transaction {
     constructor({ inputs, outputs, data }) {
@@ -182,13 +183,14 @@ class Transaction {
         var inputCoins = 0;
         var outputCoins = 0;
 
+        var tempTempOutputsArray = new Map();
 
         for(var input of transaction.inputs) {
 
             var tup = JSON.stringify([input.id, input.index]);
-            if(unusedOutputs.has(tup) && !tempOutputsArray.has(tup)) {
+            if(unusedOutputs.has(tup) && !tempOutputsArray.has(tup) && !tempTempOutputsArray.has(tup)) {
 
-                tempOutputsArray.set(tup, unusedOutputs[tup]);
+                tempTempOutputsArray.set(tup, unusedOutputs[tup]);
 
                 var buffer = Buffer.alloc(0);
                 var list = [buffer, buf];
@@ -210,20 +212,44 @@ class Transaction {
                                     publicKey:unusedOutputs[tup].publicKey});
                 
                 if(verifySign) inputCoins += unusedOutputs[tup].coins;
-                else return false;
+                else return { isValid : false, transactionFees : null };
             }
 
-            else return false;
+            else return { isValid : false, transactionFees : null };
         }
 
         for(var output of transaction.outputs) {
             outputCoins += output.coins;
         }
 
-        if(inputCoins<outputCoins) return false;
+        if(inputCoins<outputCoins) return { isValid : false, transactionFees : null };
 
-        return true;
+        for(key,val of tempTempOutputsArray ) {
+            tempOutputsArray.set(key, val);
+        }
+
+        return { isValid : true, transactionFees : inputCoins - outputCoins };
     }
+
+    static getFees({transaction, unusedOutputs, tempOutputsArray}) {
+        var fees = 0;
+
+        for(var inputs of transaction.inputs) {
+            var tup = JSON.stringify([input.id, input.index]);
+            if(unusedOutputs.has(tup) && !tempOutputsArray.has(tup)) {
+                fees += unusedOutputs[tup].coins;
+            }
+            else {
+                return -1;
+            }
+        }
+
+        for(var output of transaction.outputs) {
+            fees -= output.coins;
+        }
+        return fees;
+    }
+
 }
 
 module.exports = Transaction;
