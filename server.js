@@ -9,6 +9,7 @@ const Transaction = require('./transaction/transaction');
 const Block = require('./blockchain/block');
 const {getIndexOf} =  require('./util');
 const { isValidBlock } = require('./blockchain/block');
+const { Worker, isMainThread, workerData } = require('worker_threads');
 
 
 /**********  LOADING PEERS FROM FILE  ***********/ 
@@ -71,6 +72,31 @@ if(unusedOutputString) {
         unusedOutputs.set(key, val);
     }
 }
+
+/********** UTILITY ARRAY FOR EASY ACCESS TO PARENT HASH **********/
+var parentHashArray = [];
+var parentHashString = fs.readFileSync('parentHash.json', 'utf8');
+if(parentHashString) {
+    parentHashArray = JSON.parse(parentHashString);
+}
+
+/********** INSTANTIATE THE MINER **********/
+var minerNode;
+minerNode = new Worker('./miner.js', { workerData : { transactions : pendingTransactions, 
+                                                    target : target, 
+                                                    parentHash : parentHashArray[parentHashArray.length -1], 
+                                                    unusedOutputs : unusedOutputs} });
+                                                
+// minerNode.postMessage({ transactions : pendingTransactions, 
+//                     target : target, 
+//                     parentHash : parentHashArray[parentHashArray.length -1], 
+//                     unusedOutputs : unusedOutputs});
+
+minerNode.on('message', (data) => {
+    console.log('Mined a Block');
+    console.log(data.block);
+})
+
 
  /*********** START THE APP ***********/
 
@@ -159,7 +185,26 @@ app.post('/newBlock', binaryParser, (req,res) => {
     fs.writeFileSync('./blocks/block' + blockNum.toString() + '.dat', blockData);
     const block = new Block({index:null, parentHash:null, target:null,
                             transactions:null, blockBinaryData : blockData });
-    processBlock(block); //function should be called once block has been validated
+    
+    var map = new Map()
+    var result = isValidBlock({block:block, 
+                            unusedOutputs:unusedOutputs,
+                            tempOutputsArray : map,
+                            parentHash : parentHashArray[parentHashArray.length-1] });
+    if(result) {
+        processBlock(block); //function should be called once block has been validated
+        parentHashArray.push(block.hash);
+        minerNode.terminate();
+
+        minerNode = new Worker('./miner.js', { workerData : { transactions : pendingTransactions, 
+                                                            target : target, 
+                                                            parentHash : parentHashArray[parentHashArray.length -1], 
+                                                            unusedOutputs : unusedOutputs} });
+        // minerNode.postMessage({ transactions : pendingTransactions, 
+        //                     target : target, 
+        //                     parentHash : parentHashArray[parentHashArray.length -1], 
+        //                     unusedOutputs : unusedOutputs});
+    }
     res.send("Received");
 });
 
