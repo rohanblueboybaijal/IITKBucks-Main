@@ -3,7 +3,7 @@ const Input = require('../transaction/input');
 const Output = require('../transaction/output');
 const cryptoHash = require('../util/crypto-hash');
 const { Int32ToBytes, Int64ToBytes, HexToByteArray, ByteToInt, ByteArrayToHex, HashToNumber } = require('../util');
-const { isValidTransaction } = require('../transaction/transaction');
+//const { isValidTransaction } = require('../transaction/transaction');
 
 class Block {
     constructor({ index, parentHash, /*hash,*/ target, /*timestamp, nonce,*/ transactions, blockBinaryData }) {
@@ -120,6 +120,7 @@ class Block {
     }
 
     static isValidBlock({block, unusedOutputs, tempOutputsArray, parentHash}) {
+        var minerFees = 0;
 
         // Check that the parentHash is correct
         if(block.parentHash!==parentHash) return false;
@@ -182,13 +183,18 @@ class Block {
                 // Coinbase transaction is verified in another way
                 continue;
             }
-            isValid = isValidTransaction({
+            var obj = isValidTransaction({
                             transaction : block.transactions[j],
                             unusedOutputs : unusedOutputs,
                             tempOutputsArray : tempOutputsArray
                         });
-            if(!isValid) return false;
+            if(!obj.isValid) return false;
+            else {
+                minerFees += obj.transactionFees;
+            }
         }
+
+        if(block.transactions[0].coins > minerFees) return false;
 
         return true;
     }
