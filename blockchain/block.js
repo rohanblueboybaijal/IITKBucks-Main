@@ -194,7 +194,7 @@ class Block {
             }
         }
 
-        if(block.transactions[0].coins > minerFees) return false;
+        if(block.transactions[0].outputs[0].coins > minerFees) return false;
 
         return true;
     }
