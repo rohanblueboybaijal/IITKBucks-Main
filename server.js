@@ -92,10 +92,6 @@ minerNode = new Worker('./miner.js', { workerData : { transactions : pendingTran
 //                     parentHash : parentHashArray[parentHashArray.length -1], 
 //                     unusedOutputs : unusedOutputs});
 
-minerNode.on('message', (data) => {
-    console.log('Mined a Block');
-    console.log(data.block);
-})
 
 
  /*********** START THE APP ***********/
@@ -103,6 +99,24 @@ minerNode.on('message', (data) => {
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended : true}));
+
+
+minerNode.on('message', (data) => {
+    console.log('Mined a Block');
+    const blockBinaryData = data.blockBinaryData;
+    const block = new Block({blockBinaryData:blockBinaryData});
+    var tempOutputsArray = new Map();
+
+    if(isValidBlock({block:block, 
+                unusedOutputs:unusedOutputs, 
+                tempOutputsArray:tempOutputsArray, 
+                parentHash:parentHashArray[parentHashArray.length-1]})) {
+        processBlock(block);
+
+        //Send POST request to peers
+    }
+
+})
 
 
 

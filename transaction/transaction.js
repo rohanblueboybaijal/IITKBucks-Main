@@ -167,7 +167,12 @@ class Transaction {
         var buf;
         var list = [buffer, buf];
 
-        for(let i=0; i<transaction.outputs.length; i++) {
+        const numOutputs = transaction.outputs.length;
+        buf = Buffer.from(Int32ToBytes(numOutputs));
+        list = [buffer, buf];
+        buffer = Buffer.concat(list);
+
+        for(let i=0; i<numOutputs; i++) {
             buf = outputToByteArray(transaction.outputs[i]);
             list = [buffer, buf];
             buffer = Buffer.concat(list);
@@ -224,7 +229,7 @@ class Transaction {
 
         if(inputCoins<outputCoins) return { isValid : false, transactionFees : null };
 
-        for(key,val of tempTempOutputsArray ) {
+        for([key,val] of tempTempOutputsArray ) {
             tempOutputsArray.set(key, val);
         }
 

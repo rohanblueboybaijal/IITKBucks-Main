@@ -97,9 +97,9 @@ blockHeader.write(hash.toString('hex'), 36, 'hex');
 var list = [blockHeader, transactionByteArray];
 var blockBinaryData = Buffer.concat(list);
 
-var minedBlock = new Block({blockBinaryData:blockBinaryData});
+//var minedBlock = new Block({blockBinaryData:blockBinaryData});
 
-parentPort.postMessage({minedBlock : minedBlock});
+parentPort.postMessage({minedBlock : blockBinaryData});
 
 
 function mineBlock({blockHeader, targetValue}) {
