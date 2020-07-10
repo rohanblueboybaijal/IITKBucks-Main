@@ -30,9 +30,20 @@ var minerFees = 0;
 var tempOutputsArray = new Map();
 var transactionsToMine = [];
 
+//116 for block Header
+// Each transaction will take data.length + 4 bytes 
+// Will have to add coinbase transaction too
+
+//Total limit is 1000000 + 116
+//Will stop considering new transactions to mine if length exceeds 998000
+
+const LIMIT = 998000;
+var size = 0;
+
 for(var temp of transactions) {
     var obj = isValidTransaction({transaction:temp, unusedOutputs, tempOutputsArray});
-    if(obj.isValid) {
+    size += temp.data.length + 4;
+    if(obj.isValid && size<998000) {
         transactionsToMine.push(temp);
         minerFees += obj.transactionFees;
     }

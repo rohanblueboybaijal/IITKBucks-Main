@@ -100,6 +100,10 @@ const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended : true}));
 
+app.listen(8000, () => {
+    console.log('Server started on port 8000');
+});
+
 
 minerNode.on('message', (data) => {
     console.log('Mined a Block');
@@ -113,7 +117,13 @@ minerNode.on('message', (data) => {
                 parentHash:parentHashArray[parentHashArray.length-1]})) {
         processBlock(block);
 
-        //Send POST request to peers
+        for(peer in PEERS) {
+            axios({
+                method : 'post',
+                url : peer + '/newBlock',
+                data : block.blockBinaryData
+            });
+        }
     }
 
 })
@@ -255,11 +265,6 @@ app.post('/newTransaction', (req,res) => {
     var jsonString = JSON.stringify(pendingTransactions);
     fs.writeFileSync('pending.json', jsonString);
     res.send("Received Transaction");
-});
-
-
-app.listen(8000, () => {
-    console.log('Server started on port 8000');
 });
 
 /*********** FUNCTIONS FOR PROCESSING BLOCKS AND TRANSACTIONS  ***********/ 
