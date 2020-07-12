@@ -10,6 +10,9 @@ const Block = require('./blockchain/block');
 const {getIndexOf} =  require('./util');
 const { isValidBlock } = require('./blockchain/block');
 const { Worker, isMainThread, workerData } = require('worker_threads');
+const { map } = require('lodash');
+
+const TARGET =1;
 
 
 /**********  LOADING PEERS FROM FILE  ***********/ 
@@ -59,6 +62,7 @@ if(pendingString) {
 
 /***********  LOADING UNUSED OUTPUTS FROM FILE ***********/
 
+var peerOutputs = new Map(); // Store unused outputs for each peer
 var unusedOutputs = new Map();
 const unusedOutputString = fs.readFileSync('./unusedOutputs.json', 'utf8') ;
 if(unusedOutputString) {
@@ -70,7 +74,22 @@ if(unusedOutputString) {
                         publicKey : temp.publicKey
                     });
         unusedOutputs.set(key, val);
+
+        if(peerOutputs.has(val.publicKey)) {
+            peerOutputs[val.publicKey].push(val);
+        }
+        else {
+            peerOutputs.set(val.publicKey, []);
+            peerOutputs[val.publicKey].push(val);
+        }
     }
+}
+
+/********** A MAP OF ALIAS MAPPING TO ITS PUBLIC KEY **********/
+var aliasMap = new Map();
+var aliasMapString = fs.readFileSync('aliasMap.json', 'utf8');
+if(aliasMapString) {
+    aliasMap = new Map(JSON.parse(aliasMapString));
 }
 
 /********** UTILITY ARRAY FOR EASY ACCESS TO PARENT HASH **********/
@@ -83,7 +102,7 @@ if(parentHashString) {
 /********** INSTANTIATE THE MINER **********/
 var minerNode;
 minerNode = new Worker('./miner.js', { workerData : { transactions : pendingTransactions, 
-                                                    target : target, 
+                                                    target : TARGET,
                                                     parentHash : parentHashArray[parentHashArray.length -1], 
                                                     unusedOutputs : unusedOutputs} });
                                                 
@@ -221,7 +240,7 @@ app.post('/newBlock', binaryParser, (req,res) => {
         minerNode.terminate();
 
         minerNode = new Worker('./miner.js', { workerData : { transactions : pendingTransactions, 
-                                                            target : target, 
+                                                            target : TARGET, 
                                                             parentHash : parentHashArray[parentHashArray.length -1], 
                                                             unusedOutputs : unusedOutputs} });
         // minerNode.postMessage({ transactions : pendingTransactions, 
@@ -265,6 +284,49 @@ app.post('/newTransaction', (req,res) => {
     var jsonString = JSON.stringify(pendingTransactions);
     fs.writeFileSync('pending.json', jsonString);
     res.send("Received Transaction");
+});
+
+app.post('/addAlias', (req, res) => {
+    var alias = req.body.alias;
+    var publicKey = req.body.publicKey;
+
+    if(aliasMap.has(alias)) {
+        res.status = 400;
+    }
+    else {
+        aliasMap.set(alias, publicKey);
+    }
+});
+
+app.get('getPublicKey', (req, res) => {
+    var alias = res.body.alias;
+    if(aliasMap.has(alias)) {
+        res.status(200);
+        res.set('Content-Type', 'application/json');
+        var obj = {};
+        obj["publicKey"] = aliasMap[alias];
+        res.send(obj);
+    }
+    else {
+        res.status(404);
+        res.send("Alias not found");
+    }
+});
+
+app.get('/getUnusedOutputs', (req, res) => {
+    var alias = req.body.alias;
+    var publicKey = req.body.publicKey;
+    var obj = {};
+    if(aliasMap.has(alias)) {
+        publicKey = aliasMap[alias];
+        obj["unusedOutputs"] = peerOutputs[publicKey];
+        res.set('Content-Type', 'application/json');
+        res.send(obj);
+    }
+    else {
+        res.status = 404;
+        res.send("Alias/ key not found");
+    }
 });
 
 /*********** FUNCTIONS FOR PROCESSING BLOCKS AND TRANSACTIONS  ***********/ 
