@@ -1,3 +1,5 @@
+const LoDash = require('lodash');
+
 function Int32ToBytes (num) {
     var byteArray = new ArrayBuffer(4);
     var view = new DataView(byteArray);
@@ -122,9 +124,8 @@ function isValidSignature({data, signature, publicKey}) {
 
 function getIndexOf({object, array}) {
     var index = -1;
-    var objectString = JSON.stringify(object);
     for(let i=0; i<array.length; i++) {
-        if(objectString == JSON.stringify(array[i])) {
+        if(LoDash.isEqual(object, array[i])) {
             return i;
         }
     }
