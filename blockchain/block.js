@@ -146,7 +146,7 @@ class Block {
         const size = block.blockBinaryData.length;
         const blockData = block.blockBinaryData.slice(116, size);
         const bodyHash = cryptoHash(blockData);
-        buf = HexToByteArray(bodyHash);
+        buf = Buffer.from(HexToByteArray(bodyHash));
         list = [buffer, buf];
         buffer = Buffer.concat(list);
 
