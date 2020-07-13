@@ -1,9 +1,9 @@
 const Transaction = require('../transaction/transaction');
 const Input = require('../transaction/input');
 const Output = require('../transaction/output');
-const cryptoHash = require('../util/crypto-hash');
-const { Int32ToBytes, Int64ToBytes, HexToByteArray, ByteToInt, ByteArrayToHex, HashToNumber } = require('../util');
-//const { isValidTransaction } = require('../transaction/transaction');
+const cryptoHash = require('../utilities/crypto-hash');
+const { Int32ToBytes, Int64ToBytes, HexToByteArray, ByteToInt, ByteArrayToHex, HashToNumber } = require('../utilities');
+//const {isValidTransaction } = require('../transaction/transaction');
 
 class Block {
     constructor({ index, parentHash, /*hash,*/ target, /*timestamp, nonce,*/ transactions, blockBinaryData }) {
@@ -123,7 +123,10 @@ class Block {
         var minerFees = 0;
 
         // Check that the parentHash is correct
-        if(block.parentHash!==parentHash) return false;
+        if(block.parentHash!=parentHash) {
+            console.log(block.index, 'parentHash does not match');
+            return false;
+        }
 
         // CHECK THE BLOCK HEADER AND VALID HASH 
         var buffer = Buffer.alloc(0);
@@ -146,6 +149,10 @@ class Block {
         const size = block.blockBinaryData.length;
         const blockData = block.blockBinaryData.slice(116, size);
         const bodyHash = cryptoHash(blockData);
+        if(block.hash!=bodyHash) {
+            console.log(block.index, 'bodyHash does not match');
+            return false;
+        }
         buf = Buffer.from(HexToByteArray(bodyHash));
         list = [buffer, buf];
         buffer = Buffer.concat(list);
@@ -160,7 +167,7 @@ class Block {
         //timestamp
         buf = block.blockBinaryData.slice(i, i+8);
         i+=8;
-        list = [buffer, list];
+        list = [buffer, buf];
         buffer = Buffer.concat(list);
 
         //nonce 
@@ -172,29 +179,36 @@ class Block {
         const hash = cryptoHash(buffer);
         const hashValue = HashToNumber(hash);
 
-        if(hash != block.hash) return false;
-        if(hashValue >= targetValue) return false;
+        //if(hash != block.hash) return false; hash ius the BODY HASH!!
+        if(hashValue >= targetValue) {
+            console.log(block.index, 'hash is not below target', hashValue, targetValue);
+        }
 
         //CHECK THE TRANSACTIONS 
         const numTransactions = block.transactions.length;
         for(let j=0; j<numTransactions; j++) {
-
             if(j==0) {
                 // Coinbase transaction is verified in another way
                 continue;
             }
-            var obj = isValidTransaction({
+            var obj = Transaction.isValidTransaction({
                             transaction : block.transactions[j],
                             unusedOutputs : unusedOutputs,
                             tempOutputsArray : tempOutputsArray
                         });
-            if(!obj.isValid) return false;
+            if(!obj.isValid) {
+                console.log(block.index, `transaction ${j} not valid`);
+                return false;
+            }
             else {
                 minerFees += obj.transactionFees;
             }
         }
 
-        if(block.transactions[0].outputs[0].coins > minerFees) return false;
+        if(block.transactions[0].outputs[0].coins > minerFees) {
+            console.log(block.index, 'miner Fees invalid');
+            return false;
+        }
 
         return true;
     }

@@ -1,8 +1,7 @@
 const Input = require('./input');
 const Output = require('./output');
-
-const cryptoHash = require('../util/crypto-hash');
-const { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, isValidSignature } = require('../util/index');
+const cryptoHash = require('../utilities/crypto-hash');
+const { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, isValidSignature } = require('../utilities/index');
 const { keyIn } = require('readline-sync');
 
 class Transaction {
@@ -142,7 +141,7 @@ class Transaction {
         return {inputs, outputs};
     }
 
-    outputToByteArray(output) {
+    static outputToByteArray(output) {
         var buf;
         var buffer = Buffer.alloc(0);
         var list = [buffer, buf];
@@ -162,7 +161,7 @@ class Transaction {
         return buffer;
     }
 
-    outputByteArray(transaction) {
+    static outputByteArray(transaction) {
         var buffer = Buffer.alloc(0);
         var buf;
         var list = [buffer, buf];
@@ -173,7 +172,7 @@ class Transaction {
         buffer = Buffer.concat(list);
 
         for(let i=0; i<numOutputs; i++) {
-            buf = outputToByteArray(transaction.outputs[i]);
+            buf = Transaction.outputToByteArray(transaction.outputs[i]);
             list = [buffer, buf];
             buffer = Buffer.concat(list);
         }
@@ -182,7 +181,7 @@ class Transaction {
     }
 
     static isValidTransaction({transaction, unusedOutputs, tempOutputsArray}){
-        var buf = outputByteArray(transaction);
+        var buf = Transaction.outputByteArray(transaction);
         const hashed = cryptoHash(buf);
 
         var inputCoins = 0;
