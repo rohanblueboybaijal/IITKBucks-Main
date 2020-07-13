@@ -4,13 +4,13 @@ const Input = require('./transaction/input');
 const Output = require('./transaction/output');
 const Transaction = require('./transaction/transaction');
 const Block = require('./blockchain/block');
-const { Int32ToBytes, Int64ToBytes, HexToByteArray, ByteToInt, ByteArrayToHex, HashToNumber } = require('util/index');
-const crptoHash = require('./util/crypto-hash')
-const { isValidBlock } = require('./blockchain/block');
-const { isValidTransaction } = require('./transaction/transaction');
+const crptoHash = require('./utilities/crypto-hash')
+const { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, HashToNumber } = require('./utilities/index');
+//const { isValidBlock } = require('./blockchain/block');
+//const { isValidTransaction } = require('./transaction/transaction');
 const now = require('nano-time');
-const cryptoHash = require('./util/crypto-hash');
 const { worker } = require('cluster');
+const REWARD = 50;
 
 var transactions, target, parentHash, unusedOutputs;
 transactions = workerData.transactions;
@@ -41,7 +41,7 @@ const LIMIT = 998000;
 var size = 0;
 
 for(var temp of transactions) {
-    var obj = isValidTransaction({transaction:temp, unusedOutputs, tempOutputsArray});
+    var obj = Transaction.isValidTransaction({transaction:temp, unusedOutputs, tempOutputsArray});
     size += temp.data.length + 4;
     if(obj.isValid && size<998000) {
         transactionsToMine.push(temp);
@@ -50,7 +50,7 @@ for(var temp of transactions) {
 }
 
 // ADDING COINBASE TRANSASCTION 
-const myPublicKey = fs.readFileSync('rohan.pem', 'utf-8');
+const myPublicKey = fs.readFileSync('./Keys/public.pem', 'utf-8');
 var output = new Output({coins:minerFees+REWARD,
                         publicKey:myPublicKey, 
                         publicKeyLength:myPublicKey.length});
