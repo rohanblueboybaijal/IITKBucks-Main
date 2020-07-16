@@ -8,16 +8,24 @@ const Output = require('./transaction/output');
 const Transaction = require('./transaction/transaction');
 const Block = require('./blockchain/block');
 const {getIndexOf} =  require('./utilities');
-//const { isValidBlock } = require('./blockchain/block');
 const { Worker, isMainThread, workerData } = require('worker_threads');
-const util = require('util')
-const { map } = require('lodash');
+const util = require('util');
 const cryptoHash = require('./utilities/crypto-hash');
 
 const TARGET = '00000f0000000000000000000000000000000000000000000000000000000000';
 var upToDate = false;
-var blockNum = 0;
+var blockNum = (fs.readdirSync('./blocks')).length;
+var minerNode;
+var miningInterval;
+var isMining = false;
 
+/********** LOADING UNUSED OUTPUTS FOR EACH PEER **********/
+
+var peerOutputs = {};
+var peerOutputsString = fs.readFileSync('./peerOutputs.json', 'utf-8');
+if(peerOutputsString) {
+    peerOutputs = JSON.parse(peerOutputsString);
+}
 
 /**********  LOADING PEERS FROM FILE  ***********/ 
 
@@ -46,7 +54,7 @@ if(pendingString) {
         var inputs = [];
         for(input of object.inputs) {
             var tempInput = new Input({
-                            id : input.id,
+                            transactionId : input.transactionId,
                             index : input.index,
                             signatureLength : input.signatureLength,
                             signature : input.signatureLength
@@ -69,34 +77,33 @@ if(pendingString) {
 
 /***********  LOADING UNUSED OUTPUTS FROM FILE ***********/
 
-var peerOutputs = new Map(); // Store unused outputs for each peer
-var unusedOutputs = new Map();
+var unusedOutputs = {};
 const unusedOutputString = fs.readFileSync('./unusedOutputs.json', 'utf8') ;
 if(unusedOutputString) {
-    unusedOutputs = new Map(JSON.parse(unusedOutputString));
-    for([key, temp] of unusedOutputs) {
+    unusedOutputs = JSON.parse(unusedOutputString);
+    for(let key of Object.keys(unusedOutputs)) {
         var val = new Output({
-                        coins : temp.coins,
-                        publicKeyLength : temp.publicKeyLength,
-                        publicKey : temp.publicKey
+                        coins : unusedOutputs[key].coins,
+                        publicKeyLength : unusedOutputs[key].publicKeyLength,
+                        publicKey : unusedOutputs[key].publicKey
                     });
-        unusedOutputs.set(key, val);
+        unusedOutputs[key] = val;
 
-        if(peerOutputs.has(val.publicKey)) {
+        if(val.publicKey in peerOutputs) {
             peerOutputs[val.publicKey].push(val);
         }
         else {
-            peerOutputs.set(val.publicKey, []);
+            peerOutputs[val.publicKey] = [];
             peerOutputs[val.publicKey].push(val);
         }
     }
 }
 
 /********** A MAP OF ALIAS MAPPING TO ITS PUBLIC KEY **********/
-var aliasMap = new Map();
+var aliasMap = {}
 var aliasMapString = fs.readFileSync('aliasMap.json', 'utf8');
 if(aliasMapString) {
-    aliasMap = new Map(JSON.parse(aliasMapString));
+    aliasMap = JSON.parse(aliasMapString);
 }
 
 /********** UTILITY ARRAY FOR EASY ACCESS TO PARENT HASH **********/
@@ -131,86 +138,105 @@ app.use(bodyParser.urlencoded({extended : true}));
 
 app.listen(8000, () => {
     console.log('Server started on port 8000');
-    //getUpToDate();
+    requestBlock(blockNum, PEERS[0]);
 });
 
 
-/*minerNode.on('message', (data) => {
-    console.log('Mined a Block');
-    const blockBinaryData = data.blockBinaryData;
-    const block = new Block({blockBinaryData:blockBinaryData});
-    var tempOutputsArray = new Map();
+// minerNode.on('message', (data) => {
+//     console.log('Mined a Block');
+//     const blockBinaryData = data.blockBinaryData;
+//     const block = new Block({blockBinaryData:blockBinaryData});
+//     var tempOutputsArray = {};
 
-    if(Block.isValidBlock({block:block, 
-                unusedOutputs:unusedOutputs, 
-                tempOutputsArray:tempOutputsArray, 
-                parentHash:parentHashArray[parentHashArray.length-1]})) {
-        processBlock(block);
+//     if(Block.isValidBlock({block:block, 
+//                 unusedOutputs:unusedOutputs, 
+//                 tempOutputsArray:tempOutputsArray, 
+//                 parentHash:parentHashArray[parentHashArray.length-1]})) {
+//         processBlock(block);
 
-        for(peer in PEERS) {
-            axios({
-                method : 'post',
-                url : peer + '/newBlock',
-                data : block.blockBinaryData
-            });
-        }
-    }
+//         for(peer in PEERS) {
+//             axios({
+//                 method : 'post',
+//                 url : peer + '/newBlock',
+//                 data : block.blockBinaryData
+//             });
+//         }
+//     }
 
-})*/
+// })
 
 
 
 /*********** UTILITY FOR SENDING REQUEST TO OTHERS TO ADD US AS PEERS ***********/ 
 
-while(PEERS.length<5 && potentialPeers.length>0) {
-    let potentialPeer = potentialPeers.pop();
-    let obj = {};
-    obj["url"] = MyURL;
-    axios.post(potentialPeer + '/newPeer', obj)
-        .then((res) => {
-            if(res.status==200) {
-                PEERS.push(potentialPeer);
-            }
-            else {
-                const response = axios.get(potentialPeer + '/getPeers');
-                let yetAnotherPeerList =  JSON.parse(response.data);
-                for(let yetAnotherPeer of yetAnotherPeerList) {
-                    if(!potentialPeers.includes(yetAnotherPeer)) {
-                        potentialPeers.push(yetAnotherPeer);
+function addPeers() {
+    while(PEERS.length<5 && potentialPeers.length>0) {
+        let potentialPeer = potentialPeers.pop();
+        let obj = {};
+        obj["url"] = MyURL;
+        axios.post(potentialPeer + '/newPeer', obj)
+            .then((res) => {
+                if(res.status==200) {
+                    PEERS.push(potentialPeer);
+                }
+                else {
+                    const response = axios.get(potentialPeer + '/getPeers');
+                    let yetAnotherPeerList =  JSON.parse(response.data);
+                    for(let yetAnotherPeer of yetAnotherPeerList) {
+                        if(!potentialPeers.includes(yetAnotherPeer)) {
+                            potentialPeers.push(yetAnotherPeer);
+                        }
                     }
                 }
-            }
-        })
-        .catch((err) => {
-            console.log('Error occurred while contacting peer');
-            console.log(err);
-        })
+            })
+            .catch((err) => {
+                console.log('Error occurred while contacting peer');
+                console.log(err);
+            })
+    }
+    fs.writeFile('peers.json', JSON.stringify(PEERS), function(err) {
+        console.log(err);
+    });
 }
-fs.writeFile('peers.json', JSON.stringify(PEERS), function(err) {
-    console.log(err);
-});
-
-requestBlock(0, PEERS[0]);
-requestBlock(1, PEERS[0]);
-
 
 /***********  ENDPOINTS FOR COMMUNICATION ***********/
 
 app.get('/getBlock/:blockIndex', (req, res) => {
     var index = req.params.blockIndex;
     var path = 'blocks/block' + index + '.dat';
-    var data = fs.readFileSync(path);
-    res.set('Content-Type', 'application/octet-stream');
-    res.send(data);
+
+    if(fs.existsSync(path)) {
+        let data = fs.readFileSync(path);
+        data = Uint8Array.from(data);
+        res.set('Content-Type', 'application/octet-stream');
+        res.status(200).send(data);
+    }
+    else {
+        res.sendStatus(404);
+    }
 });
 
 
 app.get('/getPendingTransactions', (req, res) => {
     res.set('Content-Type', 'application/json');
-    var data = JSON.stringify(pendingTransactions);
-    res.send(data);
+    let pendingTransactionsList = [];
+    for(let temp of pendingTransactions) {
+        let pendingInputs = [];
+        let pendingOutputs = [];
+        for(let input of temp.inputs)  {
+            let obj = {transactionId:input.transactionId, index:input.index, signature:input.signature};
+            pendingInputs.push(obj);
+        }
+        for(let output of temp.outputs) {
+            let obj = {amount:output.coins, recipient:output.publicKey};
+            pendingOutputs.push(obj);
+        }
+        let pendingTransaction = {inputs:pendingInputs, outputs:pendingOutputs};
+        pendingTransactionsList.push(pendingTransaction);
+    }
+    let data = JSON.stringify(pendingTransactionsList);
+    res.status(200).send(data);
 });
-
 
 app.post('/newPeer', (req, res) => {
     const peer = req.body.url;
@@ -219,7 +245,7 @@ app.post('/newPeer', (req, res) => {
         res.send(`Received ${peer}`);
         PEERS.push(peer);
         var jsonString = JSON.stringify(PEERS);
-        fs.appendFileSync('./peers.json',jsonString);
+        fs.writeFileSync('./peers.json',jsonString);
     }
     else {
         res.status(500);
@@ -231,7 +257,7 @@ app.post('/newPeer', (req, res) => {
 app.get('/getPeers', (req, res) => {
     var peerList = {};
     peerList["peers"] = PEERS;
-    res.send(JSON.stringify(peerList));
+    res.status(200).send(JSON.stringify(peerList));
 });
 
 
@@ -239,33 +265,28 @@ var binaryParser = bodyParser.raw({limit:1000000, type:'application/octet-stream
 app.post('/newBlock', binaryParser, (req,res) => {
     const blockData = req.body;
     let files = fs.readdirSync('./blocks');
-    const blockNum = files.length;
-    fs.writeFileSync('./blocks/block' + blockNum.toString() + '.dat', blockData);
+    blockNum = files.length;
     const block = new Block({index:null, parentHash:null, target:null,
                             transactions:null, blockBinaryData : blockData });
     
-    var map = new Map()
+    var tempOutputsArray = {};
     var result = Block.isValidBlock({block:block, 
                             unusedOutputs:unusedOutputs,
-                            tempOutputsArray : map,
+                            tempOutputsArray : tempOutputsArray,
                             parentHash : parentHashArray[parentHashArray.length-1] });
     if(result) {
-        processBlock(block); //function should be called once block has been validated
-        var buf = block.blockBinaryData.slice(0,116);
-        var hash = cryptoHash(buf);
-        parentHashArray.push(hash);
-        minerNode.terminate();
+        res.send('Block is valid');
+        processBlock(block);
 
-        minerNode = new Worker('./miner.js', { workerData : { transactions : pendingTransactions, 
-                                                            target : TARGET, 
-                                                            parentHash : parentHashArray[parentHashArray.length -1], 
-                                                            unusedOutputs : unusedOutputs} });
-        // minerNode.postMessage({ transactions : pendingTransactions, 
-        //                     target : target, 
-        //                     parentHash : parentHashArray[parentHashArray.length -1], 
-        //                     unusedOutputs : unusedOutputs});
+        if(isMining) {
+            minerNode.terminate();
+        }
+        clearInterval(miningInterval);
+        miningInterval = setInterval(startMining, 900000);
     }
-    res.send("Received");
+    else {
+        console.log('Block is invalid');
+    }
 });
 
 
@@ -274,9 +295,9 @@ app.post('/newTransaction', (req,res) => {
     var inputs = [];
     for(let temp of data.inputs) {
         var input = new Input({
-                        id : temp.id,
+                        transactionId : temp.transactionId,
                         index : temp.index,
-                        signatureLength : temp.signatureLength,
+                        signatureLength : Math.floor((temp.signature.length)/2),
                         signature : temp.signature
                     });
         inputs.push(input);
@@ -285,9 +306,9 @@ app.post('/newTransaction', (req,res) => {
     var outputs = [];
     for(let temp of data.outputs) {
         var output = new Output({
-                        coins : temp.coins,
-                        publicKeyLength : temp.publicKeyLength,
-                        publicKey : temp.publicKey
+                        coins : temp.amount,
+                        publicKeyLength : temp.recipient.length,
+                        publicKey : temp.recipient
                     });
         outputs.push(output);
     }
@@ -297,9 +318,11 @@ app.post('/newTransaction', (req,res) => {
                         outputs:outputs,
                         data:null
                     });
-    pendingTransactions.push(transaction);
-    var jsonString = JSON.stringify(pendingTransactions);
-    fs.writeFileSync('pending.json', jsonString);
+    if(getIndexOf({object:transaction, array:pendingTransaction}) == -1) {
+        pendingTransactions.push(transaction);
+        var jsonString = JSON.stringify(pendingTransactions);
+        fs.writeFileSync('pending.json', jsonString);
+    }
     res.send("Received Transaction");
 });
 
@@ -307,22 +330,22 @@ app.post('/addAlias', (req, res) => {
     var alias = req.body.alias;
     var publicKey = req.body.publicKey;
 
-    if(aliasMap.has(alias)) {
-        res.status = 400;
+    if(alias in aliasMap) {
+        res.sendStatus(400);
     }
     else {
-        aliasMap.set(alias, publicKey);
+        aliasMap[alias] = publicKey;
+        res.sendStatus(200);
     }
 });
 
 app.get('getPublicKey', (req, res) => {
     var alias = res.body.alias;
-    if(aliasMap.has(alias)) {
-        res.status(200);
+    if(alias in aliasMap) {
         res.set('Content-Type', 'application/json');
         var obj = {};
         obj["publicKey"] = aliasMap[alias];
-        res.send(obj);
+        res.status(200).send(obj);
     }
     else {
         res.status(404);
@@ -334,15 +357,31 @@ app.get('/getUnusedOutputs', (req, res) => {
     var alias = req.body.alias;
     var publicKey = req.body.publicKey;
     var obj = {};
-    if(aliasMap.has(alias)) {
-        publicKey = aliasMap[alias];
-        obj["unusedOutputs"] = peerOutputs[publicKey];
-        res.set('Content-Type', 'application/json');
-        res.send(obj);
+    res.set('Content-Type', 'application/json');
+
+    if(publicKey !== undefined) {
+        if(publicKey in peerOutputs) {
+            obj["unusedOutputs"] = peerOutputs[publicKey];
+            res.status(200).send(obj);
+        }
+        else {
+            res.sendStatus(404);
+        }
     }
     else {
-        res.status = 404;
-        res.send("Alias/ key not found");
+        if(alias in aliasMap) {
+            publicKey = aliasMap[alias];
+            if(publicKey in peerOutputs) {
+                obj["unusedOutputs"] = peerOutputs[publicKey];
+                res.status(200).send(obj);
+            }
+            else {
+                res.sendStatus(404);
+            }
+        }
+        else {
+            res.sendStatus(404);
+        }
     }
 });
 
@@ -355,39 +394,44 @@ function processBlock(block) {
             pendingTransactions.splice(index, 1);
         }
         for(input of transaction.inputs) {
-            var key = JSON.stringify([input.id, input.index]);
-            unusedOutputs.delete(key);
+            let key = JSON.stringify([input.transactionId, input.index]);
+
+            let obj = {transactionId : input.transactionId, index: input.index, amount: unusedOutputs[key].amount };
+            let publicKey = unusedOutputs[key].publicKey;
+            let ind = getIndexOf({object:obj, array:peerOutputs[publicKey]});
+            peerOutputs[publicKey].splice(ind,1);
+
+            delete unusedOutputs[key];
         }
         var outputs = transaction.outputs;
         for(let j=0; j<outputs.length; j++) {
             var key = JSON.stringify([transaction.id, j]);
-            unusedOutputs.set(key, outputs[j]);
+            unusedOutputs[key] = outputs[j];
+
+            let peerOutput = {};
+            peerOutput["transactionId"] = transaction.id;
+            peerOutput["index"] = j;
+            peerOutput["amount"] = (outputs[j].coins);
+            if(outputs[j].publicKey in peerOutputs) {
+                peerOutputs[outputs[j].publicKey].push(peerOutput);
+            }
+            else {
+                peerOutputs[outputs[j].publicKey] = [];
+                peerOutputs[outputs[j].publicKey].push(peerOutput);
+            }
         }
     }
-}
 
-// function requestBlock(blockNum, peer) {
-//     const url = peer + '/getBlock/' + blockNum;
-//     axios({
-//         method: 'get',
-//         url : url,
-//         responseType:'arraybuffer'
-//     })
-//         .then(function(res) {
-//             var block = new Block({blockBinaryData : res.data});
-//             tempOutputsArray = new Map();
-//             if(Block.isValidBlock({
-//                     block:block,
-//                     unusedOutputs:unusedOutputs,
-//                     tempOutputsArray:tempOutputsArray})
-//             ) {
-//                 processBlock(block);
-//             }
-//         })
-//         .catch( function(err) {
-//             console.log(err);
-//         });
-// }
+    var buf = block.blockBinaryData.slice(0,116);
+    var blockHash = cryptoHash(buf);
+    parentHashArray.push(blockHash);
+    console.log(blockNum, block.parentHash);
+    console.log(blockNum, blockHash);
+    // fs.writeFileSync('./parentHash.json', JSON.stringify(parentHashArray));
+    // fs.writeFileSync('./blockData/block' + block.index + '.dat', block.blockBinaryData);
+    // fs.writeFileSync('./unusedOutputs.json', JSON.stringify(unusedOutputs));
+    // fs.writeFileSync('./peerOutputs.json', JSON.stringify(peerOutputs));
+}
 
 function requestBlock(blockNum, peer) {
     const url = peer + '/getBlock/' + blockNum;
@@ -398,45 +442,124 @@ function requestBlock(blockNum, peer) {
     })
         .then(function(res) {
             var block = new Block({blockBinaryData : res.data});
-            tempOutputsArray = new Map();
+            tempOutputsArray = {};
+            //fs.writeFileSync('./blocks/block' + blockNum + '.dat', res.data);
+            console.log(blockNum);
+
+            //console.log(parentHashArray);
+            //console.log(unusedOutputs);
             //console.log(util.inspect(block, false, null, true /* enable colors */));
-            var buf = block.blockBinaryData.slice(0,116);
-            var hash = cryptoHash(buf);
-            console.log(BigInt('0x' + block.target));
-            if(!blockNum || Block.isValidBlock({
-                    block:block,
-                    unusedOutputs:unusedOutputs,
-                    tempOutputsArray:tempOutputsArray,
-                    parentHash:parentHashArray[blockNum]})
+
+            if(Block.isValidBlock({
+                        block:block,
+                        unusedOutputs:unusedOutputs,
+                        tempOutputsArray:tempOutputsArray,
+                        parentHash:parentHashArray[blockNum]})
             ) {
                 processBlock(block);
-
                 console.log(`Block ${blockNum} verified`);
-                var buf = block.blockBinaryData.slice(0,116);
-                var hash = cryptoHash(buf);
-                console.log(`hash ${blockNum} : ${hash}`);
-                parentHashArray.push(hash);
 
-                //console.log(unusedOutputs);
+                if(!upToDate) {
+                    blockNum +=1;
+                    requestBlock(blockNum, PEERS[0]);
+                }
             }
             else {
                 console.log(`Block ${blockNum} not verified`);
-                upToDate = true;
+
+                if(!upToDate) {
+                    blockNum +=1;
+                    requestBlock(blockNum, PEERS[0]);
+                }
+                //upToDate = true;
             }
         })
         .catch( function(err) {
-            console.log('Phuddu');
+            getPendingTransactions();
+            miningInterval = setInterval(startMining, 900000)
+            console.log('Got no block');
             console.log(err);
             upToDate = true;
         });
 }
 
-function getUpToDate() {
-    while(!upToDate) {
-        console.log(blockNum);
-        requestBlock(blockNum, PEERS[0]);
-        blockNum ++;
-        if(blockNum>7) upToDate = true;
+function getPendingTransactions() {
+    let pendingTransactionsList = [];
+    axios({
+            method: 'get',
+            url: PEERS[0] + '/getPendingTransactions'
+        })
+        .then((res) => {
+            if(!res.data.length) {
+                return;
+            }
+            pendingTransactionsList = res.data;
+            for(let transaction of pendingTransactionsList) {
+                let inputs = [], outputs = [];
+                for(let obj of transaction.inputs) {
+                    let input = new Input({transactionId:obj.transactionId, index:obj.index, signatureLength:Math.floor((obj.signature.length)/2), signature:obj.signature});
+                    inputs.push(input);
+                }
+                for(let obj of transaction.outputs) {
+                    let output = new Output({coins:obj.amount, publicKey:obj.publicKey, publicKeyLength:obj.publicKey.length});
+                    outputs.push(output);
+                }
+            }
+            let transaction = new Transaction({inputs, outputs});
+            if(getIndexOf(transaction, pendingTransactions) == -1) {
+                pendingTransactions.push(transaction);
+            }
+        })
+        .catch((err) => {
+            console.log('Error while getting pendingTransactions : ', err);
+        });
+}
+
+function startMining() {
+    if(isMining) {
+        minerNode.terminate();
     }
-    //Using the global variables
+    minerNode = new Worker('./miner.js', { workerData : { transactions : pendingTransactions, 
+                                                            target : TARGET, 
+                                                            parentHash : parentHashArray[parentHashArray.length -1], 
+                                                            unusedOutputs : unusedOutputs} });
+}
+
+function setIntervalAndExecute(fn, t) {
+    fn();
+    return(setInterval(fn, t));
+}
+
+
+
+/******************************* TESTING **********************************/
+
+function tempRequestBlock(blockNum, block) {
+    let tempOutputsArray = {};
+    //console.log(util.inspect(block, false, null, true /* enable colors */));
+    // var buf = block.blockBinaryData.slice(0,116);
+    // var blockHash = cryptoHash(buf);
+    // parentHashArray.push(blockHash);
+    // console.log(parentHashArray);
+    if(!blockNum || Block.isValidBlock({
+            block:block,
+            unusedOutputs:unusedOutputs,
+            tempOutputsArray:tempOutputsArray,
+            parentHash:parentHashArray[blockNum]})
+    ) {
+        processBlock(block);
+        console.log(`Block ${blockNum} verified`);
+    }
+    else {
+        console.log(`Block ${blockNum} not verified`);
+        upToDate = true;
+    }
+    //console.log(util.inspect(block.transactions, false, null, true /* enable colors */));
+    console.log(unusedOutputs);
+}
+
+for(let i=0; i<0; i++) {
+    let blockBinaryData = fs.readFileSync('./blockData/Block' + i + '.dat');
+    let block = new Block({blockBinaryData});
+    tempRequestBlock(i, block);
 }
