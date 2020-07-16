@@ -1,6 +1,6 @@
 class Output {
     constructor({ coins, publicKeyLength, publicKey }) {
-        this.coins = coins;
+        this.coins = coins.toString();
         this.publicKeyLength = publicKeyLength;
         this.publicKey = publicKey;
     }
