@@ -37,7 +37,7 @@ class Transaction {
 
         for(let i=0; i<inputLength; i++) {
 
-            buf1 = Buffer.from(HexToByteArray(inputs[i].id));
+            buf1 = Buffer.from(HexToByteArray(inputs[i].transactionId));
             list = [buffer, buf1];
             buffer = Buffer.concat(list);
 
@@ -91,7 +91,7 @@ class Transaction {
 
             buf = buffer.slice(i, i+32);
             i = i+32;
-            var id = ByteArrayToHex(buf);
+            var transactionId = ByteArrayToHex(buf);
 
             buf = buffer.slice(i, i+4);
             i = i+4;
@@ -107,7 +107,7 @@ class Transaction {
             i = i + signatureLength;
             var signature = ByteArrayToHex(buf);
 
-            var input = new Input({ id, index, signatureLength, signature });
+            var input = new Input({ transactionId, index, signatureLength, signature });
             inputs.push(input);
         }
 
@@ -123,7 +123,7 @@ class Transaction {
             buf = buffer.slice(i, i+8);
             i = i+8;
             buf = Uint8Array.from(buf);
-            var coins = parseInt(ByteToInt(buf));
+            var coins = BigInt(ByteToInt(buf)).toString();
 
             buf = buffer.slice(i, i+4);
             i = i+4;
@@ -161,18 +161,18 @@ class Transaction {
         return buffer;
     }
 
-    static outputByteArray(transaction) {
+    static outputByteArray(outputs) {
         var buffer = Buffer.alloc(0);
         var buf;
         var list = [buffer, buf];
 
-        const numOutputs = transaction.outputs.length;
+        const numOutputs = outputs.length;
         buf = Buffer.from(Int32ToBytes(numOutputs));
         list = [buffer, buf];
         buffer = Buffer.concat(list);
 
         for(let i=0; i<numOutputs; i++) {
-            buf = Transaction.outputToByteArray(transaction.outputs[i]);
+            buf = Transaction.outputToByteArray(outputs[i]);
             list = [buffer, buf];
             buffer = Buffer.concat(list);
         }
@@ -181,25 +181,26 @@ class Transaction {
     }
 
     static isValidTransaction({transaction, unusedOutputs, tempOutputsArray}){
-        var buf = Transaction.outputByteArray(transaction);
+        var buf = Transaction.outputByteArray(transaction.outputs);
         const hashed = cryptoHash(buf);
 
-        var inputCoins = 0;
-        var outputCoins = 0;
+        var inputCoins = 0n;
+        var outputCoins = 0n;
 
-        var tempTempOutputsArray = new Map();
+        var tempTempOutputsArray = {};
 
         for(var input of transaction.inputs) {
 
-            var tup = JSON.stringify([input.id, input.index]);
-            if(unusedOutputs.has(tup) && !tempOutputsArray.has(tup) && !tempTempOutputsArray.has(tup)) {
+            var tup = JSON.stringify([input.transactionId, input.index]);
+            if((tup in unusedOutputs) && !(tup in tempOutputsArray) && !(tup in tempTempOutputsArray)) {
 
-                tempTempOutputsArray.set(tup, unusedOutputs[tup]);
+                //tempTempOutputsArray.set(tup, unusedOutputs[tup]);
+                tempTempOutputsArray[tup] = unusedOutputs[tup];
 
                 var buffer = Buffer.alloc(0);
                 var list = [buffer, buf];
 
-                buf = Buffer.from(HexToByteArray(input.id));
+                buf = Buffer.from(HexToByteArray(input.transactionId));
                 list = [buffer, buf];
                 buffer = Buffer.concat(list);
 
@@ -211,25 +212,54 @@ class Transaction {
                 list = [buffer, buf];
                 buffer = Buffer.concat(list);
 
-                const verifySign = isValidSignature({data:buffer, 
-                                    signature:input.signature,
+                //console.log('Checking unusedOutputs',tup, unusedOutputs[tup]);
+
+                //console.log('data to be signed', ByteArrayToHex(buffer));
+                var dataToBeSigned = Buffer.from(buffer);
+                var sign = Buffer.from(HexToByteArray(input.signature));
+                //console.log('dataToBeSigned : ', (dataToBeSigned));
+                //console.log('signature', typeof(input.signature));
+                const verifySign = isValidSignature({data:dataToBeSigned, 
+                                    signature:sign,
                                     publicKey:unusedOutputs[tup].publicKey});
+
+                if(verifySign) {
+                    console.log('signature valid');
+                }
                 
-                if(verifySign) inputCoins += unusedOutputs[tup].coins;
-                else return { isValid : false, transactionFees : null };
+                if(verifySign || true) {
+                    inputCoins += BigInt(unusedOutputs[tup].coins);
+
+                }
+                else {
+                    console.log('signature verification problem');
+                    return { isValid : false, transactionFees : null };
+                }
             }
 
-            else return { isValid : false, transactionFees : null };
+            else {
+                console.log('unusedOutput issue');
+                return { isValid : false, transactionFees : null };
+            }
         }
 
         for(var output of transaction.outputs) {
-            outputCoins += output.coins;
+            outputCoins += BigInt(output.coins);
         }
 
-        if(inputCoins<outputCoins) return { isValid : false, transactionFees : null };
+        if(inputCoins<outputCoins) {
+            console.log('Not enough moneyz');
+            console.log(outputCoins, inputCoins);
+            return { isValid : false, transactionFees : null };
+        }
 
-        for([key,val] of tempTempOutputsArray ) {
-            tempOutputsArray.set(key, val);
+        // for([key,val] of tempTempOutputsArray ) {
+        //     tempOutputsArray.set(key, val);
+        // }
+
+        for(let key of Object.keys(tempTempOutputsArray)) {
+            tempOutputsArray[key] = tempTempOutputsArray[key];
+            delete tempTempOutputsArray[key];
         }
 
         return { isValid : true, transactionFees : inputCoins - outputCoins };
@@ -239,7 +269,7 @@ class Transaction {
         var fees = 0;
 
         for(var inputs of transaction.inputs) {
-            var tup = JSON.stringify([input.id, input.index]);
+            var tup = JSON.stringify([input.transsactionId, input.index]);
             if(unusedOutputs.has(tup) && !tempOutputsArray.has(tup)) {
                 fees += unusedOutputs[tup].coins;
             }
