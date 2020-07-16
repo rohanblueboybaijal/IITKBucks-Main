@@ -194,7 +194,6 @@ class Transaction {
             var tup = JSON.stringify([input.transactionId, input.index]);
             if((tup in unusedOutputs) && !(tup in tempOutputsArray) && !(tup in tempTempOutputsArray)) {
 
-                //tempTempOutputsArray.set(tup, unusedOutputs[tup]);
                 tempTempOutputsArray[tup] = unusedOutputs[tup];
 
                 var buffer = Buffer.alloc(0);
@@ -212,22 +211,13 @@ class Transaction {
                 list = [buffer, buf];
                 buffer = Buffer.concat(list);
 
-                //console.log('Checking unusedOutputs',tup, unusedOutputs[tup]);
-
-                //console.log('data to be signed', ByteArrayToHex(buffer));
                 var dataToBeSigned = Buffer.from(buffer);
                 var sign = Buffer.from(HexToByteArray(input.signature));
-                //console.log('dataToBeSigned : ', (dataToBeSigned));
-                //console.log('signature', typeof(input.signature));
                 const verifySign = isValidSignature({data:dataToBeSigned, 
                                     signature:sign,
                                     publicKey:unusedOutputs[tup].publicKey});
 
                 if(verifySign) {
-                    console.log('signature valid');
-                }
-                
-                if(verifySign || true) {
                     inputCoins += BigInt(unusedOutputs[tup].coins);
 
                 }
