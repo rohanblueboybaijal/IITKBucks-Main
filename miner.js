@@ -6,11 +6,9 @@ const Transaction = require('./transaction/transaction');
 const Block = require('./blockchain/block');
 const crptoHash = require('./utilities/crypto-hash')
 const { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, HashToNumber } = require('./utilities/index');
-//const { isValidBlock } = require('./blockchain/block');
-//const { isValidTransaction } = require('./transaction/transaction');
 const now = require('nano-time');
-const { worker } = require('cluster');
-const REWARD = 50;
+
+const REWARD = 100000n;
 
 var transactions, target, parentHash, unusedOutputs;
 transactions = workerData.transactions;
@@ -26,8 +24,8 @@ parentPort.on('message', (newData) => {
 })
 
 // FINDING THE VALID TRANSACTIONS
-var minerFees = 0;
-var tempOutputsArray = new Map();
+var minerFees = 0n;
+var tempOutputsArray = {};
 var transactionsToMine = [];
 
 //116 for block Header
@@ -49,8 +47,8 @@ for(var temp of transactions) {
     }
 }
 
-// ADDING COINBASE TRANSASCTION 
-const myPublicKey = fs.readFileSync('./Keys/public.pem', 'utf-8');
+/********** ADD COINBASE TRANSASCTION **********/
+const myPublicKey = fs.readFileSync('./Keys/myPublicKey.pem', 'utf-8');
 var output = new Output({coins:minerFees+REWARD,
                         publicKey:myPublicKey, 
                         publicKeyLength:myPublicKey.length});
@@ -82,7 +80,7 @@ var blockHeader = Buffer.alloc(116);
 var pos = 0;
 
 var files = fs.readdirSync('./blocks');
-var index = files.length + 1; // Clarify block indexing. Is index 0 GENESIS?
+var index = files.length; 
 buf = Buffer.from(Int32ToBytes(index));
 blockHeader.write(buf.toString('hex'), pos, 'hex');
 pos += 4;
@@ -91,7 +89,7 @@ buf = Buffer.from(HexToByteArray(parentHash));
 blockHeader.write(buf.toString('hex'), pos, 'hex');
 pos += 32;
 
-blockHeader.write(transactionByteArray.toString('hex'), pos, 'hex');
+blockHeader.write(hashedBlockData.toString('hex'), pos, 'hex');
 pos += 32;
 
 buf = Buffer.from(HexToByteArray(target));
@@ -101,14 +99,8 @@ pos += 32;
 // FIND NONCE
 const targetValue = HashToNumber(target);
 var header = mineBlock({blockHeader, targetValue});
-var hash = cryptoHash(blockHeader);
-var buf = Buffer.from(HexToByteArray(hash));
-
-blockHeader.write(hash.toString('hex'), 36, 'hex');
-var list = [blockHeader, transactionByteArray];
+var list = [header, transactionByteArray];
 var blockBinaryData = Buffer.concat(list);
-
-//var minedBlock = new Block({blockBinaryData:blockBinaryData});
 
 parentPort.postMessage({minedBlock : blockBinaryData});
 
