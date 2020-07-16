@@ -1,4 +1,5 @@
 const LoDash = require('lodash');
+const crypto = require('crypto');
 
 function Int32ToBytes (num) {
     var byteArray = new ArrayBuffer(4);
@@ -89,23 +90,36 @@ function ByteArrayToHex(byteArray) {
     return str;
 }
 
-function HashToNumber(hash) {
+// function HashToNumber(hash) {
     
-    length = hash.length;
-    var ans = BigInt(0);
-    for(let i=0; i<length ; i++) {
-        if(hash[i]>='0' && hash[i]<='9') {
-            let x = hash[i] - '0';
-            x = BigInt(x);
-            ans = ans*BigInt(16) + x;
-        }
-        else {
-            let x = hash[i].charCodeAt(0) - 97 + 10;
-            x = BigInt(x);
-            ans = ans*BigInt(16) + x;
-        }
-    }
-    return ans;
+//     length = hash.length;
+//     var ans = BigInt(0);
+//     for(let i=0; i<length ; i++) {
+//         if(hash[i]>='0' && hash[i]<='9') {
+//             let x = hash[i] - '0';
+//             x = BigInt(x);
+//             ans = ans*BigInt(16) + x;
+//         }
+//         else {
+//             let x = hash[i].charCodeAt(0) - 97 + 10;
+//             x = BigInt(x);
+//             ans = ans*BigInt(16) + x;
+//         }
+//     }
+//     return ans;
+// }
+
+function HashToNumber(hash) {
+    return BigInt('0x' + hash);
+}
+
+function signData({message, privateKey}) {
+    const signature = crypto.sign('sha256', Buffer.from(message), {
+        key : privateKey,
+        padding : crypto.constants.RSA_PKCS1_PSS_PADDING,
+        saltLength : 32
+    }).toString('hex');
+    return signature;
 }
 
 function isValidSignature({data, signature, publicKey}) {
@@ -114,7 +128,8 @@ function isValidSignature({data, signature, publicKey}) {
         'sha256',
         Buffer.from(data), {
             key: publicKey,
-            padding: crypto.constants.RSA_PKCS_PSS_PADDING,
+            padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
+            saltLength : 32,
         },
         Buffer.from(signature, 'hex')
     );
@@ -132,4 +147,4 @@ function getIndexOf({object, array}) {
     return index;
 }
 
-module.exports = { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, HashToNumber, isValidSignature, getIndexOf };
+module.exports = { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, HashToNumber, isValidSignature, getIndexOf, signData };
