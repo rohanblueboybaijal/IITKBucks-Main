@@ -19,7 +19,6 @@ class Block {
             if(blockBinaryData) {
                 this.byteArrayToBlock();
             }
-
     }
 
     blockToByteArray() {
@@ -210,10 +209,9 @@ class Block {
             console.log(block.index, 'miner Fees invalid');
             return false;
         }
-
+        
         return true;
     }
-
 }
 
 module.exports = Block;
