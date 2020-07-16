@@ -95,101 +95,125 @@ function addAlias() {
     });
 }
 
+// function transferCoins() {
+//     let publicKeyPath = readlineSync.question('Enter your publicKey path : ');
+//     let privateKeyPath = readlineSync.question('Enter your privateKey path : ');
+//     let publicKey = fs.readFileSync(publicKeyPath, 'utf-8');
+//     let privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
+
+//     let obj = getUnusedOutputs({publicKey:publicKey, alias:undefined});
+//     console.log(obj);
+//     let coinsSpent = 0n;
+//     let inputs=[], outputs=[];
+
+//     let numOutputs = Number(readlineSync.question('Enter the number of outputs : '));
+
+//     for(let i=0; i<numOutputs; i++) {
+//         let options = ['Public Key', 'Alias'];
+//         let option = readlineSync.keyInSelect(options, 'Select the option : ');
+//         let recipient;
+//         if(option===0) {
+//             let recipientKeyPath = readlineSync.question('Enter public Key path for recipient');
+//             recipient = fs.readFileSync(recipientKeyPath, 'utf-8');
+//         }
+//         else {
+//             let alias = readlineSync.question('Enter the alias for the recipient');
+//             axios.post(URL + '/getPublicKey', {alias:alias})
+//             .then((res) => {
+//                 recipient = res.data.publicKey;
+//                 console.log(recipient);
+//             })
+//             .catch((err) => {
+//                 console.log('Could not retrieve publicKey ', err);
+//                 return;
+//             });
+//         }
+//         let coins = BigInt(readlineSync.question('Enter the number of coins : '));
+//         coinsSpent += coins;
+//         let output = new Output({coins:coins, publicKeyLength:recipient.length, publicKey:recipient});
+//         outputs.push(output);
+//     }
+
+//     console.log(balance, coinsSpent);
+//     let transactionFees = BigInt(readlineSync.question('Enter the Transaction Fees you want to leave : '));
+//     coinsSpent += transactionFees;
+//     if(coinsSpent>balance) {
+//         console.log('Not enough Moneyz ');
+//         return;
+//     }
+//     let remainder = balance - coinsSpent;
+//     let returnOutput = new Output({coins:remainder,
+//                                     publicKeyLength:publicKey.length, 
+//                                     publicKey:publicKey });
+//     outputs.push(returnOutput);
+//     let outputByteData = Transaction.outputByteArray(outputs);
+//     let outputHash = cryptoHash(outputByteData);
+
+//     let dataToBeSigned = Buffer.alloc(68);
+//     dataToBeSigned.write(outputHash.toString('hex'), 36, 'hex');
+//     for(let i=0; i<unusedOutputs.length; i++) {
+//         let transactionId = unusedOutputs[i].transactionId;
+//         let index = unusedOutputs[i].index;
+
+//         dataToBeSigned.write((HexToByteArray(transactionId)).toString('hex'), 0, 'hex');
+//         dataToBeSigned.write((Int32ToBytes(index)).toString('hex'), 32, 'hex');
+        
+//         let signature = signData({message:dataToBeSigned, privateKey:privateKey});
+//         let input = new Input({transactionId, index, signature, signatureLength:Math.froor(signature.length/2)});
+//         inputs.push(input);
+//     }
+
+//     let transaction = new Transaction({inputs, outputs});
+//     let pendingTransactionsString = fs.readFileSync('./pending.json');
+//     let pendingTransactions = [];
+//     if(pendingTransactionsString) {
+//         pendingTransactions = JSON.parse(pendingTransactionsString);
+//     }
+//     pendingTransactions.push(transaction);
+
+//     let dataInputs = [];
+//     for(let input of inputs) {
+//         let obj = {transactionId:input.transactionId, index:input.index, signature:input.signature};
+//         dataInputs.push(obj);
+//     }
+//     let dataOutputs = [];
+//     for(let output of outputs) {
+//         let obj = {amount:output.coins, recipient:output.publicKey};
+//         dataOutputs.push(obj);
+//     }
+
+//     axios.post(URL + '/newTransaction', {"inputs":dataInputs, "outputs":dataOutputs})
+//     .then((res) => {
+//         console.log('Transaction sent succesfully');
+//     })
+//     .catch((err) => {
+//         console.log('Error while sending the Transaction ', err);
+//     })
+
+//     fs.writeFileSync('./pending.json', JSON.stringify(pendingTransactions));
+// }
+
+
 function transferCoins() {
     let publicKeyPath = readlineSync.question('Enter your publicKey path : ');
     let privateKeyPath = readlineSync.question('Enter your privateKey path : ');
     let publicKey = fs.readFileSync(publicKeyPath, 'utf-8');
     let privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
 
-    let {balance, unusedOutputs} = getUnusedOutputs({publicKey:publicKey, alias:undefined});
-    let coinsSpent = 0n;
-    let inputs=[], outputs=[];
-
-    let numOutputs = Number(readlineSync.question('Enter the number of outputs : '));
-
-    for(let i=0; i<numOutputs; i++) {
-        let options = ['Public Key', 'Alias'];
-        let option = readlineSync.keyInSelect(options, 'Select the option : ');
-        let recipient;
-        if(option===0) {
-            let recipientKeyPath = readlineSync.question('Enter public Key path for recipient');
-            recipient = fs.readFileSync(recipientKeyPath, 'utf-8');
-        }
-        else {
-            let alias = readlineSync.question('Enter the alias for the recipient');
-            axios.get(URL + '/getPublicKey', {params:{alias:alias}})
-            .then((res) => {
-                recipient = res.data.publicKey;
-            })
-            .catch((err) => {
-                console.log('Could not retrieve publicKey ', err);
-                return;
-            });
-        }
-        let coins = BigInt(readlineSync.question('Enter the number of coins : '));
-        coinsSpent += coins;
-        let output = new Output({coins:coins, publicKeyLength:recipient.length, publicKey:recipient});
-        outputs.push(output);
-    }
-
-    let transactionFees = BigInt(readlineSync.question('Enter the Transaction Fees you want to leave : '));
-    coinsSpent += transactionFees;
-    if(coinsSpent>balance) {
-        console.log('Not enough Moneyz ');
-        return;
-    }
-    let remainder = balance - coinsSpent;
-    let returnOutput = new Output({coins:remainder,
-                                    publicKeyLength:publicKey.length, 
-                                    publicKey:publicKey });
-    outputs.push(returnOutput);
-    let outputByteData = Transaction.outputByteArray(outputs);
-    let outputHash = cryptoHash(outputByteData);
-
-    let dataToBeSigned = Buffer.alloc(68);
-    dataToBeSigned.write(outputHash.toString('hex'), 36, 'hex');
-    for(let i=0; i<unusedOutputs.length; i++) {
-        let transactionId = unusedOutputs[i].transactionId;
-        let index = unusedOutputs[i].index;
-
-        dataToBeSigned.write((HexToByteArray(transactionId)).toString('hex'), 0, 'hex');
-        dataToBeSigned.write((Int32ToBytes(index)).toString('hex'), 32, 'hex');
-        
-        let signature = signData({message:dataToBeSigned, privateKey:privateKey});
-        let input = new Input({transactionId, index, signature, signatureLength:Math.froor(signature.length/2)});
-        inputs.push(input);
-    }
-
-    let transaction = new Transaction({inputs, outputs});
-    let pendingTransactionsString = fs.readFileSync('./pending.json');
-    let pendingTransactions = [];
-    if(pendingTransactionsString) {
-        pendingTransactions = JSON.parse(pendingTransactionsString);
-    }
-    pendingTransactions.push(transaction);
-
-    let dataInputs = [];
-    for(let input of inputs) {
-        let obj = {transactionId:input.transactionId, index:input.index, signature:input.signature};
-        dataInputs.push(obj);
-    }
-    let dataOutputs = [];
-    for(let output of outputs) {
-        let obj = {amount:output.coins, recipient:output.publicKey};
-        dataOutputs.push(obj);
-    }
-
-    axios.post(URL + '/newTransaction', {"inputs":dataInputs, "outputs":dataOutputs})
+    axios.post(URL + '/getUnusedOutputs', {publicKey:publicKey})
     .then((res) => {
-        console.log('Transaction sent succesfully');
+        var unusedOutputs = res.data.unusedOutputs;
+        var balance = 0n;
+        for(output of unusedOutputs) {
+            balance += BigInt(output.amount);
+        }
+        getDetails(balance, unusedOutputs, publicKey, privateKey);
     })
     .catch((err) => {
-        console.log('Error while sending the Transaction ', err);
+        console.log('Error while getting unusedOutputs ', err);
     })
-
-    fs.writeFileSync('./pending.json', JSON.stringify(pendingTransactions));
+    
 }
-
 
 /********** UTILITY FUNCTIONS **********/
 
@@ -223,5 +247,98 @@ function getUnusedOutputs({publicKey, alias}) {
             console.log(err);
         }); 
     }
-    return {balance : null, unusedOutputs : null};
+}
+
+function getDetails(balance, unusedOutputs, publicKey, privateKey) {
+    let coinsSpent = 0n;
+    let inputs=[], outputs=[];
+
+    let numOutputs = Number(readlineSync.question('Enter the number of outputs : '));
+
+    for(let i=0; i<numOutputs; i++) {
+        let options = ['Public Key', 'Alias'];
+        let option = readlineSync.keyInSelect(options, 'Select the option : ');
+        let recipient;
+        if(option===0) {
+            let recipientKeyPath = readlineSync.question('Enter public Key path for recipient');
+            recipient = fs.readFileSync(recipientKeyPath, 'utf-8');
+
+            let coins = BigInt(readlineSync.question('Enter the number of coins : '));
+            coinsSpent += coins;
+            let output = new Output({coins:coins, publicKeyLength:recipient.length, publicKey:recipient});
+            outputs.push(output);
+
+            console.log(balance, coinsSpent);
+            let transactionFees = BigInt(readlineSync.question('Enter the Transaction Fees you want to leave : '));
+            coinsSpent += transactionFees;
+            if(coinsSpent>balance) {
+                console.log('Not enough Moneyz ');
+                return;
+            }
+            let remainder = balance - coinsSpent;
+            let returnOutput = new Output({coins:remainder,
+                                            publicKeyLength:publicKey.length, 
+                                            publicKey:publicKey });
+            outputs.push(returnOutput);
+            let outputByteData = Transaction.outputByteArray(outputs);
+            let outputHash = cryptoHash(outputByteData);
+
+            let dataToBeSigned = Buffer.alloc(68);
+            dataToBeSigned.write(outputHash.toString('hex'), 36, 'hex');
+            for(let i=0; i<unusedOutputs.length; i++) {
+                let transactionId = unusedOutputs[i].transactionId;
+                let index = unusedOutputs[i].index;
+
+                dataToBeSigned.write((HexToByteArray(transactionId)).toString('hex'), 0, 'hex');
+                dataToBeSigned.write((Int32ToBytes(index)).toString('hex'), 32, 'hex');
+                
+                let signature = signData({message:dataToBeSigned, privateKey:privateKey});
+                let input = new Input({transactionId, index, signature, signatureLength:Math.floor(signature.length/2)});
+                inputs.push(input);
+            }
+        }
+        else {
+            let alias = readlineSync.question('Enter the alias for the recipient');
+            axios.post(URL + '/getPublicKey', {alias:alias})
+            .then((res) => {
+                recipient = res.data.publicKey;
+            })
+            .catch((err) => {
+                console.log('Could not retrieve publicKey ', err);
+                return;
+            });
+        }
+    }
+    
+
+    let transaction = new Transaction({inputs, outputs});
+    console.log(transaction);
+    const pendingString = fs.readFileSync('./pending.json', 'utf8');
+    var pendingTransactions = [];
+    if(pendingString) {
+        let tempArray = JSON.parse(pendingString);
+        pendingTransactions = tempArray;
+    }
+    pendingTransactions.push(transaction);
+
+    let dataInputs = [];
+    for(let input of inputs) {
+        let obj = {transactionId:input.transactionId, index:input.index, signature:input.signature};
+        dataInputs.push(obj);
+    }
+    let dataOutputs = [];
+    for(let output of outputs) {
+        let obj = {amount:output.coins, recipient:output.publicKey};
+        dataOutputs.push(obj);
+    }
+
+    // axios.post(URL + '/newTransaction', {"inputs":dataInputs, "outputs":dataOutputs})
+    // .then((res) => {
+    //     console.log('Transaction sent succesfully');
+    // })
+    // .catch((err) => {
+    //     console.log('Error while sending the Transaction ', err);
+    // })
+
+    // fs.writeFileSync('./pending.json', JSON.stringify(pendingTransactions));
 }
