@@ -120,7 +120,7 @@ class Block {
     }
 
     static isValidBlock({block, unusedOutputs, tempOutputsArray, parentHash}) {
-        var minerFees = 0;
+        var minerFees = 0n;
 
         // Check that the parentHash is correct
         if(block.parentHash!=parentHash) {
@@ -154,6 +154,7 @@ class Block {
             return false;
         }
         buf = Buffer.from(HexToByteArray(bodyHash));
+        i+=32;
         list = [buffer, buf];
         buffer = Buffer.concat(list);
 
@@ -179,9 +180,9 @@ class Block {
         const hash = cryptoHash(buffer);
         const hashValue = HashToNumber(hash);
 
-        //if(hash != block.hash) return false; hash ius the BODY HASH!!
+        //if(hash != block.hash) return false; hash is the BODY HASH!!
         if(hashValue >= targetValue) {
-            console.log(block.index, 'hash is not below target', hashValue, targetValue);
+            console.log(block.index, 'hash is not below target',hash, hashValue, block.target);
         }
 
         //CHECK THE TRANSACTIONS 
@@ -205,7 +206,7 @@ class Block {
             }
         }
 
-        if(block.transactions[0].outputs[0].coins > minerFees) {
+        if(BigInt(block.transactions[0].outputs[0].coins) > minerFees + 100000n) {
             console.log(block.index, 'miner Fees invalid');
             return false;
         }
