@@ -43,7 +43,7 @@ function checkBalance() {
 
     if(ind === 0) {
         let publicKeyPath = readlineSync.question('Enter public key path : ');
-        publicKey = fs.readFileSync(publickKeyPath, 'utf-8');
+        publicKey = fs.readFileSync(publicKeyPath, 'utf-8');
         let obj = getUnusedOutputs({publicKey:publicKey, alias:undefined});
         balance = obj.balance;
         unusedOutputs = obj.unusedOutputs;
@@ -151,8 +151,9 @@ function transferCoins() {
     for(let i=0; i<unusedOutputs.length; i++) {
         let transactionId = unusedOutputs[i].transactionId;
         let index = unusedOutputs[i].index;
-        dataToBeSigned.write((Int32ToBytes(index)).toString('hex'), 0, 'hex');
-        dataToBeSigned.write((HexToByteArray(transactionId)).toString('hex'), 4, 'hex');
+
+        dataToBeSigned.write((HexToByteArray(transactionId)).toString('hex'), 0, 'hex');
+        dataToBeSigned.write((Int32ToBytes(index)).toString('hex'), 32, 'hex');
         
         let signature = signData({message:dataToBeSigned, privateKey:privateKey});
         let input = new Input({transactionId, index, signature, signatureLength:Math.froor(signature.length/2)});
