@@ -10,6 +10,7 @@ const cryptoHash = require('./utilities/crypto-hash');
 const e = require('express');
 
 const URL = "https://iitkbucks.pclub.in";
+const myURL = 'http://localhost:8000';
 
 var aliasMapString = fs.readFileSync('./aliasMap.json', 'utf8');
 var aliasMap = {};
@@ -45,14 +46,14 @@ function checkBalance() {
         let publicKeyPath = readlineSync.question('Enter public key path : ');
         publicKey = fs.readFileSync(publicKeyPath, 'utf-8');
         let obj = getUnusedOutputs({publicKey:publicKey, alias:undefined});
-        balance = obj.balance;
-        unusedOutputs = obj.unusedOutputs;
+        // balance = obj.balance;
+        // unusedOutputs = obj.unusedOutputs;
     }
     else {
         alias = readlineSync.question('Enter the alias : ');
         let obj = getUnusedOutputs({publicKey:undefined, alias:alias});
-        balance = obj.balance;
-        unusedOutputs = obj.unusedOutputs;
+        // balance = obj.balance;
+        // unusedOutputs = obj.unusedOutputs;
     }
 }
 
@@ -252,6 +253,7 @@ function getUnusedOutputs({publicKey, alias}) {
 function getDetails(balance, unusedOutputs, publicKey, privateKey) {
     let coinsSpent = 0n;
     let inputs=[], outputs=[];
+    console.log(unusedOutputs);
 
     let numOutputs = Number(readlineSync.question('Enter the number of outputs : '));
 
@@ -271,7 +273,8 @@ function getDetails(balance, unusedOutputs, publicKey, privateKey) {
             let alias = readlineSync.question('Enter the alias for the recipient');
             axios.post(URL + '/getPublicKey', {alias:alias})
             .then((res) => {
-                recipient = res.data.publicKey;
+                recipient = res.data.publibalance = obj.balance;
+                unusedOutputs = obj.unusedOutputs;cKey;
                 let coins = BigInt(readlineSync.question('Enter the number of coins : '));
                 coinsSpent += coins;
                 let output = new Output({coins:coins, publicKeyLength:recipient.length, publicKey:recipient});
@@ -300,29 +303,32 @@ function getDetails(balance, unusedOutputs, publicKey, privateKey) {
     let outputHash = cryptoHash(outputByteData);
 
     let dataToBeSigned = Buffer.alloc(68);
-    dataToBeSigned.write(outputHash.toString('hex'), 36, 'hex');
+    dataToBeSigned.write(outputHash.toString('hex'), 36, 32, 'hex');
     for(let i=0; i<unusedOutputs.length; i++) {
         let transactionId = unusedOutputs[i].transactionId;
+        console.log(transactionId);
         let index = unusedOutputs[i].index;
 
-        dataToBeSigned.write((Buffer.from((HexToByteArray(transactionId)))).toString('hex'), 0, 'hex');
-        dataToBeSigned.write((Buffer.from((Int32ToBytes(index)))).toString('hex'), 32, 'hex');
-                
+        dataToBeSigned.write((Buffer.from((HexToByteArray(transactionId)))).toString('hex'), 0, 32,'hex');
+        dataToBeSigned.write((Buffer.from((Int32ToBytes(index)))).toString('hex'), 32, 4, 'hex');
+        console.log(dataToBeSigned.toString('hex'));
+
         let signature = signData({message:dataToBeSigned, privateKey:privateKey});
-        let input = new Input({transactionId, index, signature, signatureLength:Math.floor(signature.length/2)});
+        let input = new Input({transactionId:transactionId, index:index, signature:signature, signatureLength:Math.floor(signature.length/2)});
         inputs.push(input);
+        console.log(input);
     }
     
 
     let transaction = new Transaction({inputs, outputs});
     console.log(transaction);
-    const pendingString = fs.readFileSync('./pending.json', 'utf8');
-    var pendingTransactions = [];
-    if(pendingString) {
-        let tempArray = JSON.parse(pendingString);
-        pendingTransactions = tempArray;
-    }
-    pendingTransactions.push(transaction);
+    // const pendingString = fs.readFileSync('./pending.json', 'utf8');
+    // var pendingTransactions = [];
+    // if(pendingString) {
+    //     let tempArray = JSON.parse(pendingString);
+    //     pendingTransactions = tempArray;
+    // }
+    // pendingTransactions.push(transaction);
 
     let dataInputs = [];
     for(let input of inputs) {
@@ -335,14 +341,15 @@ function getDetails(balance, unusedOutputs, publicKey, privateKey) {
         dataOutputs.push(obj);
     }
 
-    // axios.post(URL + '/newTransaction', {"inputs":dataInputs, "outputs":dataOutputs})
-    // .then((res) => {
-    //     console.log('Transaction sent succesfully');
-    // })
-    // .catch((err) => {
-    //     console.log('Error while sending the Transaction ', err);
-    // })
+    axios.post(myURL + '/newTransaction', {"inputs":dataInputs, "outputs":dataOutputs})
+    .then((res) => {
+        console.log('Transaction sent succesfully');
+        //console.log(res);
+    })
+    .catch((err) => {
+        console.log('Error while sending the Transaction ', err);
+    })
 
-    fs.writeFileSync('./pending.json', JSON.stringify(pendingTransactions));
+    //fs.writeFileSync('./pending.json', JSON.stringify(pendingTransactions));
 }
 
