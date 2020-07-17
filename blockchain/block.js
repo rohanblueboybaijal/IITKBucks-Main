@@ -3,7 +3,7 @@ const Input = require('../transaction/input');
 const Output = require('../transaction/output');
 const cryptoHash = require('../utilities/crypto-hash');
 const { Int32ToBytes, Int64ToBytes, HexToByteArray, ByteToInt, ByteArrayToHex, HashToNumber } = require('../utilities');
-//const {isValidTransaction } = require('../transaction/transaction');
+const TARGET = '0000004000000000000000000000000000000000000000000000000000000000';
 
 class Block {
     constructor({ index, parentHash, /*hash,*/ target, /*timestamp, nonce,*/ transactions, blockBinaryData }) {
@@ -179,6 +179,12 @@ class Block {
         const hash = cryptoHash(buffer);
         const hashValue = HashToNumber(hash);
 
+        const actualTargetValue = HashToNumber(TARGET);
+        if(actualTargetValue != targetValue ) {
+            console.log(block.index, 'Wrong target being used' );
+            return false;
+        }
+        
         //if(hash != block.hash) return false; hash is the BODY HASH!!
         if(hashValue >= targetValue) {
             console.log(block.index, 'hash is not below target',hash, hashValue, block.target);
