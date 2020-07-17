@@ -183,7 +183,7 @@ class Transaction {
     static isValidTransaction({transaction, unusedOutputs, tempOutputsArray}){
         var buf = Transaction.outputByteArray(transaction.outputs);
         const hashed = cryptoHash(buf);
-
+        //console.log(transaction.id);
         var inputCoins = 0n;
         var outputCoins = 0n;
 
@@ -213,24 +213,34 @@ class Transaction {
 
                 var dataToBeSigned = Buffer.from(buffer);
                 var sign = Buffer.from(HexToByteArray(input.signature));
+                //console.log(unusedOutputs[tup].publicKey);
                 const verifySign = isValidSignature({data:dataToBeSigned, 
                                     signature:sign,
                                     publicKey:unusedOutputs[tup].publicKey});
 
                 // console.log(dataToBeSigned.toString('hex'));
-                // console.log( unusedOutputs[tup].publicKey)
+                // console.log( unusedOutputs[tup]);
                 if(verifySign) {
                     inputCoins += BigInt(unusedOutputs[tup].coins);
 
                 }
                 else {
                     console.log('signature verification problem');
-                    return { isValid : false, transactionFees : null };
+                    //return { isValid : false, transactionFees : null };
                 }
             }
-
             else {
+                console.log(tup);
                 console.log('unusedOutput issue');
+                if(!(tup in unusedOutputs)) {
+                    console.log('Output doe not exist');
+                }
+                else if(tup in tempOutputsArray) {
+                    console.log('Ouput used in some other transaction');
+                }
+                else if(tup in tempTempOutputsArray) {
+                    console.log('Double spending in same transaction');
+                }
                 return { isValid : false, transactionFees : null };
             }
         }
@@ -249,7 +259,7 @@ class Transaction {
             tempOutputsArray[key] = tempTempOutputsArray[key];
             delete tempTempOutputsArray[key];
         }
-
+        //console.log(transaction.id, 'is valid');
         return { isValid : true, transactionFees : inputCoins - outputCoins };
     }
 
