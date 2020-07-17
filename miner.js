@@ -13,114 +13,22 @@ console.log('Started Miner');
 const REWARD = 100000n;
 const TARGET = '0000004000000000000000000000000000000000000000000000000000000000';
 
-var transactions, target, parentHash, unusedOutputs, startFindingNonce;
-transactions = workerData.transactions;
-target =  TARGET;
-parentHash = workerData.parentHash;
-unusedOutputs = workerData.unusedOutputs;
-startFindingNonce = workerData.startFindingNonce;
+parentPort.on('message', (message) => {
 
-// FINDING THE VALID TRANSACTIONS
-var minerFees = 0n;
-var tempOutputsArray = {};
-var transactionsToMine = [];
-
-//116 for block Header
-// Each transaction will take data.length + 4 bytes 
-
-//Total limit is 1000000 + 116
-//Will stop considering new transactions to mine if length exceeds 998000
-
-const LIMIT = 998000;
-var size = 0;
-
-console.log('Finding transactions to mine');
-for(let j=0; j<transactions.length; j++) {
-    var obj = Transaction.isValidTransaction({transaction:transactions[j], unusedOutputs, tempOutputsArray});
-    size += transactions[j].data.length + 4;
-    if(obj.isValid && size<998000) {
-        transactionsToMine.push(transactions[j]);
-        minerFees += obj.transactionFees;
-    }
-}
-console.log('Found transactions to mine');
-
-/********** ADD COINBASE TRANSASCTION **********/
-const myPublicKey = fs.readFileSync('./Keys/myPublicKey.pem', 'utf-8');
-var output = new Output({coins:minerFees+REWARD,
-                        publicKey:myPublicKey, 
-                        publicKeyLength:myPublicKey.length});
-var outputs = [];
-outputs.push(output);
-var coinbaseTransaction = new Transaction({inputs:[], outputs:outputs});
-transactionsToMine.splice(0, 0, coinbaseTransaction);
-
-//console.log(util.inspect(transactionsToMine, true, null, true));
-
-//PREPARING TRANSACTION BYTE ARRAY AND BLOCK HEADER FOR MINING
-
-var buffer = Buffer.alloc(0);
-var buf;
-
-var numTransactions = transactionsToMine.length;
-buf = Buffer.from(Int32ToBytes(numTransactions));
-list = [buffer, buf];
-buffer = Buffer.concat(list);
-
-for(let j=0; j<numTransactions; j++) {
-    var transactionSize = transactionsToMine[j].data.length;
-    buf = Buffer.from(Int32ToBytes(transactionSize));
-    list = [buffer, buf];
-    buffer = Buffer.concat(list);
-
-    buf = Buffer.from(transactionsToMine[j].data);
-    list = [buffer, buf];
-    buffer = Buffer.concat(list);
-}
-var transactionByteArray = buffer;
-var hashedBlockData = cryptoHash(buffer);
-
-var blockHeader = Buffer.alloc(116);
-var pos = 0;
-
-var files = fs.readdirSync('./blocks');
-var index = files.length; 
-buf = Buffer.from(Int32ToBytes(index));
-blockHeader.write(buf.toString('hex'), pos, 4, 'hex');
-pos += 4;
-
-buf = Buffer.from(HexToByteArray(parentHash));
-blockHeader.write(buf.toString('hex'), pos, 32, 'hex');
-pos += 32;
-
-blockHeader.write(hashedBlockData.toString('hex'), pos, 32, 'hex');
-pos += 32;
-
-buf = Buffer.from(HexToByteArray(target));
-blockHeader.write(buf.toString('hex'), pos, 32, 'hex');
-pos += 32;
-
-// FIND NONCE
-const targetValue = HashToNumber(target);
-if(startFindingNonce && transactionsToMine.length>1) {
-    console.log('Finding Nonce')
-    var header = mineBlock({blockHeader, targetValue});
+    console.log('Inside the miner after message');
+    const targetValue = HashToNumber(TARGET);
+    var blockHeader = Buffer.from(message.blockHeader);
+    var transactionByteArray = Buffer.from(message.transactionByteArray);
+    var header = findNonce({blockHeader, targetValue});
     var list = [header, transactionByteArray];
     var blockBinaryData = Buffer.concat(list);
-    let block = new Block({blockBinaryData});
+    console.log(blockHeader.length);
     parentPort.postMessage({minedBlock : blockBinaryData});
-}
-else if(startFindingNonce){
-    console.log('Can start finding nonce but have no transactions');
-}
-else {
-    console.log('No thumbs up for finding nonce');
-}
 
-//console.log(util.inspect(block, false, null, true));
+})
 
 
-function mineBlock({blockHeader, targetValue}) {
+function findNonce({blockHeader, targetValue}) {
     var nonce = 0n;
     var timestamp;
     var buf;
@@ -137,11 +45,13 @@ function mineBlock({blockHeader, targetValue}) {
         var hash = cryptoHash(blockHeader);
         var hashNum = HashToNumber(hash);
 
-        if(nonce%10000n == 0n) {
-           console.log(nonce, hash);
-        }
+        // if(nonce%1000000n == 0n) {
+        //    console.log(nonce, hash);
+        // }
 
     } while(hashNum >= targetValue);
-    console.log('Found ', nonce);
+    //console.log('Found ', nonce, timestamp);
+    var hash = cryptoHash(blockHeader);
+    //console.log(hash);
     return blockHeader;
 }
