@@ -217,6 +217,8 @@ class Transaction {
                                     signature:sign,
                                     publicKey:unusedOutputs[tup].publicKey});
 
+                // console.log(dataToBeSigned.toString('hex'));
+                // console.log( unusedOutputs[tup].publicKey)
                 if(verifySign) {
                     inputCoins += BigInt(unusedOutputs[tup].coins);
 
@@ -242,10 +244,6 @@ class Transaction {
             console.log(outputCoins, inputCoins);
             return { isValid : false, transactionFees : null };
         }
-
-        // for([key,val] of tempTempOutputsArray ) {
-        //     tempOutputsArray.set(key, val);
-        // }
 
         for(let key of Object.keys(tempTempOutputsArray)) {
             tempOutputsArray[key] = tempTempOutputsArray[key];
