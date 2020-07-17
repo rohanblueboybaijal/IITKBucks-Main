@@ -258,56 +258,59 @@ function getDetails(balance, unusedOutputs, publicKey, privateKey) {
     for(let i=0; i<numOutputs; i++) {
         let options = ['Public Key', 'Alias'];
         let option = readlineSync.keyInSelect(options, 'Select the option : ');
-        let recipient;
         if(option===0) {
             let recipientKeyPath = readlineSync.question('Enter public Key path for recipient');
             recipient = fs.readFileSync(recipientKeyPath, 'utf-8');
-
             let coins = BigInt(readlineSync.question('Enter the number of coins : '));
             coinsSpent += coins;
             let output = new Output({coins:coins, publicKeyLength:recipient.length, publicKey:recipient});
             outputs.push(output);
 
-            console.log(balance, coinsSpent);
-            let transactionFees = BigInt(readlineSync.question('Enter the Transaction Fees you want to leave : '));
-            coinsSpent += transactionFees;
-            if(coinsSpent>balance) {
-                console.log('Not enough Moneyz ');
-                return;
-            }
-            let remainder = balance - coinsSpent;
-            let returnOutput = new Output({coins:remainder,
-                                            publicKeyLength:publicKey.length, 
-                                            publicKey:publicKey });
-            outputs.push(returnOutput);
-            let outputByteData = Transaction.outputByteArray(outputs);
-            let outputHash = cryptoHash(outputByteData);
-
-            let dataToBeSigned = Buffer.alloc(68);
-            dataToBeSigned.write(outputHash.toString('hex'), 36, 'hex');
-            for(let i=0; i<unusedOutputs.length; i++) {
-                let transactionId = unusedOutputs[i].transactionId;
-                let index = unusedOutputs[i].index;
-
-                dataToBeSigned.write((HexToByteArray(transactionId)).toString('hex'), 0, 'hex');
-                dataToBeSigned.write((Int32ToBytes(index)).toString('hex'), 32, 'hex');
-                
-                let signature = signData({message:dataToBeSigned, privateKey:privateKey});
-                let input = new Input({transactionId, index, signature, signatureLength:Math.floor(signature.length/2)});
-                inputs.push(input);
-            }
         }
         else {
             let alias = readlineSync.question('Enter the alias for the recipient');
             axios.post(URL + '/getPublicKey', {alias:alias})
             .then((res) => {
                 recipient = res.data.publicKey;
+                let coins = BigInt(readlineSync.question('Enter the number of coins : '));
+                coinsSpent += coins;
+                let output = new Output({coins:coins, publicKeyLength:recipient.length, publicKey:recipient});
+                outputs.push(output);
             })
             .catch((err) => {
                 console.log('Could not retrieve publicKey ', err);
                 return;
             });
         }
+    }
+
+    console.log(balance, coinsSpent);
+    let transactionFees = BigInt(readlineSync.question('Enter the Transaction Fees you want to leave : '));
+    coinsSpent += transactionFees;
+    if(coinsSpent>balance) {
+        console.log('Not enough Moneyz ');
+        return;
+    }
+    let remainder = balance - coinsSpent;
+    let returnOutput = new Output({coins:remainder,
+                                        publicKeyLength:publicKey.length, 
+                                        publicKey:publicKey });
+    outputs.push(returnOutput);
+    let outputByteData = Transaction.outputByteArray(outputs);
+    let outputHash = cryptoHash(outputByteData);
+
+    let dataToBeSigned = Buffer.alloc(68);
+    dataToBeSigned.write(outputHash.toString('hex'), 36, 'hex');
+    for(let i=0; i<unusedOutputs.length; i++) {
+        let transactionId = unusedOutputs[i].transactionId;
+        let index = unusedOutputs[i].index;
+
+        dataToBeSigned.write((Buffer.from((HexToByteArray(transactionId)))).toString('hex'), 0, 'hex');
+        dataToBeSigned.write((Buffer.from((Int32ToBytes(index)))).toString('hex'), 32, 'hex');
+                
+        let signature = signData({message:dataToBeSigned, privateKey:privateKey});
+        let input = new Input({transactionId, index, signature, signatureLength:Math.floor(signature.length/2)});
+        inputs.push(input);
     }
     
 
@@ -340,5 +343,6 @@ function getDetails(balance, unusedOutputs, publicKey, privateKey) {
     //     console.log('Error while sending the Transaction ', err);
     // })
 
-    // fs.writeFileSync('./pending.json', JSON.stringify(pendingTransactions));
+    fs.writeFileSync('./pending.json', JSON.stringify(pendingTransactions));
 }
+
