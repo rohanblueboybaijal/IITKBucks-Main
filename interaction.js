@@ -9,7 +9,7 @@ const { Int32ToBytes, Int64ToBytes, HexToByteArray, ByteToInt, ByteArrayToHex, H
 const cryptoHash = require('./utilities/crypto-hash');
 const e = require('express');
 
-const URL = "https://iitkbucks.pclub.in";
+const URL = "https://5d219da56ce4.ngrok.io";
 const myURL = 'http://localhost:8000';
 
 var aliasMapString = fs.readFileSync('./aliasMap.json', 'utf8');
@@ -344,7 +344,7 @@ function getDetails(balance, unusedOutputs, publicKey, privateKey) {
     axios.post(myURL + '/newTransaction', {"inputs":dataInputs, "outputs":dataOutputs})
     .then((res) => {
         console.log('Transaction sent succesfully');
-        //console.log(res);
+        console.log(res);
     })
     .catch((err) => {
         console.log('Error while sending the Transaction ', err);

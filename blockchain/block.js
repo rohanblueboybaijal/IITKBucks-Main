@@ -120,7 +120,10 @@ class Block {
 
     static isValidBlock({block, unusedOutputs, tempOutputsArray, parentHash}) {
         var minerFees = 0n;
-
+        // console.log('Block', block);
+        // console.log('unusedOutputs ', unusedOutputs);
+        // console.log('tempOutputsArray', tempOutputsArray);
+        // console.log('parentHash ', parentHash)
         // Check that the parentHash is correct
         if(block.parentHash!=parentHash) {
             console.log(block.index, 'parentHash does not match');
@@ -188,6 +191,7 @@ class Block {
         //if(hash != block.hash) return false; hash is the BODY HASH!!
         if(hashValue >= targetValue) {
             console.log(block.index, 'hash is not below target',hash, hashValue, block.target);
+            return false;
         }
 
         //CHECK THE TRANSACTIONS 
