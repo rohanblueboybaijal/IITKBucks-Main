@@ -12,12 +12,14 @@ const { Worker, isMainThread, workerData } = require('worker_threads');
 const util = require('util');
 const cryptoHash = require('./utilities/crypto-hash');
 
-const TARGET = '00000f0000000000000000000000000000000000000000000000000000000000';
+const TARGET = '0000004000000000000000000000000000000000000000000000000000000000';
+const INTERVAL = 10000;
 var upToDate = false;
 var blockNum = (fs.readdirSync('./blocks')).length;
 var minerNode;
 var miningInterval;
 var isMining = false;
+var startFindingNonce = false; //set it to true after getting pending Transactions
 
 /********** LOADING UNUSED OUTPUTS FOR EACH PEER **********/
 
@@ -29,12 +31,12 @@ if(peerOutputsString) {
 
 /**********  LOADING PEERS FROM FILE  ***********/ 
 
-const MyURL = 'rohanblueboybaijal';
+const MyURL = 'http://localhost:8000';
 var PEERS = [];
 
 PEERS.push('https://iitkbucks.pclub.in');
 
-var potentialPeers = [];
+var potentialPeers = ['http://localhost:3000'];
 const peerString = fs.readFileSync('peers.json','utf8');
 if(peerString) {
     var data = JSON.parse(peerString);
@@ -74,6 +76,7 @@ if(pendingString) {
         pendingTransactions.push(temp);
     }
 }
+//console.log(util.inspect(pendingTransactions, false, null, true ));
 
 /***********  LOADING UNUSED OUTPUTS FROM FILE ***********/
 
@@ -114,22 +117,7 @@ if(parentHashString) {
     parentHashArray = JSON.parse(parentHashString);
 }
 
-/********** INSTANTIATE THE MINER **********/
-
-/*var minerNode;
-minerNode = new Worker('./miner.js', { workerData : { transactions : pendingTransactions, 
-                                                    target : TARGET,
-                                                    parentHash : parentHashArray[parentHashArray.length -1], 
-                                                    unusedOutputs : unusedOutputs} });*/
-                     
-                                                    
-// minerNode.postMessage({ transactions : pendingTransactions, 
-//                     target : target, 
-//                     parentHash : parentHashArray[parentHashArray.length -1], 
-//                     unusedOutputs : unusedOutputs});
-
-
-
+miningInterval = setIntervalAndExecute(startMining, INTERVAL);
  /*********** START THE APP ***********/
 
 const app = express();
@@ -138,65 +126,85 @@ app.use(bodyParser.urlencoded({extended : true}));
 
 app.listen(8000, () => {
     console.log('Server started on port 8000');
-    requestBlock(blockNum, PEERS[0]);
+    addPeer(potentialPeers.pop());
+    console.log('Out of peer loop');
+    //miningInterval = setIntervalAndExecute(startMining, INTERVAL);
+    isMining = true;
+    //requestBlock(blockNum, PEERS[0]);
 });
 
 
-// minerNode.on('message', (data) => {
-//     console.log('Mined a Block');
-//     const blockBinaryData = data.blockBinaryData;
-//     const block = new Block({blockBinaryData:blockBinaryData});
-//     var tempOutputsArray = {};
+minerNode.on('message', (data) => {
+    console.log('Mined a Block');
+    const blockBinaryData = data.blockBinaryData;
+    const block = new Block({blockBinaryData:blockBinaryData});
+    var tempOutputsArray = {};
 
-//     if(Block.isValidBlock({block:block, 
-//                 unusedOutputs:unusedOutputs, 
-//                 tempOutputsArray:tempOutputsArray, 
-//                 parentHash:parentHashArray[parentHashArray.length-1]})) {
-//         processBlock(block);
+    console.log(block);
 
-//         for(peer in PEERS) {
-//             axios({
-//                 method : 'post',
-//                 url : peer + '/newBlock',
-//                 data : block.blockBinaryData
-//             });
-//         }
-//     }
+    if(Block.isValidBlock({block:block, 
+                unusedOutputs:unusedOutputs, 
+                tempOutputsArray:tempOutputsArray, 
+                parentHash:parentHashArray[parentHashArray.length-1]})) {
+        processBlock(block);
 
-// })
+        // for(peer in PEERS) {
+        //     axios({
+        //         method : 'post',
+        //         url : peer + '/newBlock',
+        //         data : block.blockBinaryData
+        //     });
+        // }
+    }
+
+})
 
 
 
 /*********** UTILITY FOR SENDING REQUEST TO OTHERS TO ADD US AS PEERS ***********/ 
 
-function addPeers() {
-    while(PEERS.length<5 && potentialPeers.length>0) {
-        let potentialPeer = potentialPeers.pop();
-        let obj = {};
-        obj["url"] = MyURL;
-        axios.post(potentialPeer + '/newPeer', obj)
+function addPeer(potentialPeer) {
+    let obj = {url : MyURL};
+    axios.post(potentialPeer + '/newPeer', obj)
+    .then((res) => {
+        if(res.status===200) {
+            console.log('Added ', potentialPeer);
+            PEERS.push(potentialPeer);
+            fs.writeFileSync('./peers.json', JSON.stringify(PEERS));
+        }
+        else {
+            axios.get(potentialPeer + '/getPeers')
             .then((res) => {
-                if(res.status==200) {
-                    PEERS.push(potentialPeer);
-                }
-                else {
-                    const response = axios.get(potentialPeer + '/getPeers');
-                    let yetAnotherPeerList =  JSON.parse(response.data);
-                    for(let yetAnotherPeer of yetAnotherPeerList) {
-                        if(!potentialPeers.includes(yetAnotherPeer)) {
-                            potentialPeers.push(yetAnotherPeer);
-                        }
+                let yetAnotherPeerList = JSON.parse(res.data);
+                for(let yetAnotherPeer of yetAnotherPeerList) {
+                    if(!potentialPeers.includes(yetAnotherPeer)) {
+                        potentialPeers.push(yetAnotherPeer);
                     }
                 }
             })
             .catch((err) => {
-                console.log('Error occurred while contacting peer');
-                console.log(err);
+                console.log('Error occurred while contacting peer ',potentialPeer);
             })
-    }
-    fs.writeFile('peers.json', JSON.stringify(PEERS), function(err) {
-        console.log(err);
-    });
+        }
+        if(PEERS.length<5 && potentialPeers.length>0) {
+            let p = potentialPeers.pop();
+            addPeer(p);
+        }
+        if(PEERS.length ==5 || potentialPeers.length==0) {
+            requestBlock(blockNum, PEERS[0]);
+        }
+    })
+    .catch((err) => {
+        console.log('Error occurred while contacting peer', potentialPeer);
+        if(potentialPeers.length>0) {
+            let p = potentialPeers.pop();
+            addPeer(p);
+        }
+        if(PEERS.length ==5 || potentialPeers.length==0) {
+            requestBlock(blockNum, PEERS[0]);
+        }
+    })
+    return 0;
 }
 
 /***********  ENDPOINTS FOR COMMUNICATION ***********/
@@ -275,17 +283,18 @@ app.post('/newBlock', binaryParser, (req,res) => {
                             tempOutputsArray : tempOutputsArray,
                             parentHash : parentHashArray[parentHashArray.length-1] });
     if(result) {
-        res.send('Block is valid');
+        res.status(200).send('Block is valid');
         processBlock(block);
 
         if(isMining) {
             minerNode.terminate();
+            isMining = false;
         }
         clearInterval(miningInterval);
-        miningInterval = setInterval(startMining, 900000);
+        miningInterval = setInterval(startMining, INTERVAL);
     }
     else {
-        console.log('Block is invalid');
+        cres.status(400).send('Block is invalid');
     }
 });
 
@@ -313,17 +322,22 @@ app.post('/newTransaction', (req,res) => {
         outputs.push(output);
     }
 
-    var transaction = new Transaction({ 
-                        inputs:inputs,
-                        outputs:outputs,
-                        data:null
-                    });
-    if(getIndexOf({object:transaction, array:pendingTransaction}) == -1) {
+    res.status(200).send('Received Transaction');
+
+    var transaction = new Transaction({ inputs:inputs, outputs:outputs});
+    if(getIndexOf({object:transaction, array:pendingTransaction}) !== -1) {
+        for(peer of PEERS) {
+            axios({method : 'post', url : peer + '/newTransaction', data : data})
+            .then((res) => { })
+            .catch((err) => {
+                console.log('Error while sending transaction ', err);
+            })
+        }
+
         pendingTransactions.push(transaction);
         var jsonString = JSON.stringify(pendingTransactions);
         fs.writeFileSync('pending.json', jsonString);
     }
-    res.send("Received Transaction");
 });
 
 app.post('/addAlias', (req, res) => {
@@ -427,14 +441,14 @@ function processBlock(block) {
     parentHashArray.push(blockHash);
     console.log(blockNum, block.parentHash);
     console.log(blockNum, blockHash);
-    // fs.writeFileSync('./parentHash.json', JSON.stringify(parentHashArray));
-    // fs.writeFileSync('./blockData/block' + block.index + '.dat', block.blockBinaryData);
-    // fs.writeFileSync('./unusedOutputs.json', JSON.stringify(unusedOutputs));
-    // fs.writeFileSync('./peerOutputs.json', JSON.stringify(peerOutputs));
+    fs.writeFileSync('./parentHash.json', JSON.stringify(parentHashArray));
+    fs.writeFileSync('./blocks/block' + block.index + '.dat', block.blockBinaryData);
+    fs.writeFileSync('./unusedOutputs.json', JSON.stringify(unusedOutputs));
+    fs.writeFileSync('./peerOutputs.json', JSON.stringify(peerOutputs));
 }
 
-function requestBlock(blockNum, peer) {
-    const url = peer + '/getBlock/' + blockNum;
+function requestBlock(blockIndex, peer) {
+    const url = peer + '/getBlock/' + blockIndex;
     axios({
         method: 'get',
         url : url,
@@ -444,47 +458,47 @@ function requestBlock(blockNum, peer) {
             var block = new Block({blockBinaryData : res.data});
             tempOutputsArray = {};
             //fs.writeFileSync('./blocks/block' + blockNum + '.dat', res.data);
-            console.log(blockNum);
 
             //console.log(parentHashArray);
             //console.log(unusedOutputs);
             //console.log(util.inspect(block, false, null, true /* enable colors */));
 
-            if(Block.isValidBlock({
+            if(!blockNum || Block.isValidBlock({
                         block:block,
                         unusedOutputs:unusedOutputs,
                         tempOutputsArray:tempOutputsArray,
                         parentHash:parentHashArray[blockNum]})
             ) {
                 processBlock(block);
-                console.log(`Block ${blockNum} verified`);
+                console.log(`Block ${blockIndex} verified`);
 
                 if(!upToDate) {
-                    blockNum +=1;
-                    requestBlock(blockNum, PEERS[0]);
+                    blockIndex += 1;
+                    blockNum = blockIndex;
+                    requestBlock(blockIndex, PEERS[0]);
                 }
             }
             else {
                 console.log(`Block ${blockNum} not verified`);
-
                 if(!upToDate) {
-                    blockNum +=1;
-                    requestBlock(blockNum, PEERS[0]);
+                    blockIndex += 1;
+                    blockNum = blockIndex;
+                    requestBlock(blockIndex, PEERS[0]);
                 }
-                //upToDate = true;
+                upToDate = true;
             }
         })
         .catch( function(err) {
             getPendingTransactions();
-            miningInterval = setInterval(startMining, 900000)
-            console.log('Got no block');
-            console.log(err);
+            //miningInterval = setIntervalAndExecute(startMining, INVERTAL);
+            console.log(`Block ${blockIndex} does not exist`);
             upToDate = true;
         });
 }
 
 function getPendingTransactions() {
     let pendingTransactionsList = [];
+    console.log('Ask for pending Transactions');
     axios({
             method: 'get',
             url: PEERS[0] + '/getPendingTransactions'
@@ -494,6 +508,7 @@ function getPendingTransactions() {
                 return;
             }
             pendingTransactionsList = res.data;
+            console.log(util.inspect(pendingTransactionsList, false, null, true /* enable colors */));
             for(let transaction of pendingTransactionsList) {
                 let inputs = [], outputs = [];
                 for(let obj of transaction.inputs) {
@@ -501,28 +516,41 @@ function getPendingTransactions() {
                     inputs.push(input);
                 }
                 for(let obj of transaction.outputs) {
-                    let output = new Output({coins:obj.amount, publicKey:obj.publicKey, publicKeyLength:obj.publicKey.length});
+                    let key = obj.recipient;
+                    let output = new Output({coins:obj.amount, publicKey:obj.recipient, publicKeyLength:key.length});
                     outputs.push(output);
                 }
-            }
-            let transaction = new Transaction({inputs, outputs});
-            if(getIndexOf(transaction, pendingTransactions) == -1) {
-                pendingTransactions.push(transaction);
+                let t = new Transaction({inputs, outputs});
+                 if(getIndexOf({object:t, array:pendingTransactions}) == -1) {
+                    pendingTransactions.push(t);
+                    fs.writeFileSync('./pending.json', JSON.stringify(pendingTransactions));
+                }
             }
         })
         .catch((err) => {
             console.log('Error while getting pendingTransactions : ', err);
         });
+        startFindingNonce = true;
+        if(isMining) {
+            isMining = false;
+            minerNode.terminate();
+        }
+        clearInterval(miningInterval);
+        miningInterval = setIntervalAndExecute(startMining, INTERVAL);
 }
 
 function startMining() {
     if(isMining) {
+        console.log('Terminated');
         minerNode.terminate();
+        isMining = false;
     }
+    isMining = true;
     minerNode = new Worker('./miner.js', { workerData : { transactions : pendingTransactions, 
                                                             target : TARGET, 
                                                             parentHash : parentHashArray[parentHashArray.length -1], 
-                                                            unusedOutputs : unusedOutputs} });
+                                                            unusedOutputs : unusedOutputs,
+                                                            startFindingNonce : startFindingNonce} });
 }
 
 function setIntervalAndExecute(fn, t) {
@@ -536,11 +564,6 @@ function setIntervalAndExecute(fn, t) {
 
 function tempRequestBlock(blockNum, block) {
     let tempOutputsArray = {};
-    //console.log(util.inspect(block, false, null, true /* enable colors */));
-    // var buf = block.blockBinaryData.slice(0,116);
-    // var blockHash = cryptoHash(buf);
-    // parentHashArray.push(blockHash);
-    // console.log(parentHashArray);
     if(!blockNum || Block.isValidBlock({
             block:block,
             unusedOutputs:unusedOutputs,
@@ -554,7 +577,7 @@ function tempRequestBlock(blockNum, block) {
         console.log(`Block ${blockNum} not verified`);
         upToDate = true;
     }
-    //console.log(util.inspect(block.transactions, false, null, true /* enable colors */));
+    //console.log(util.inspect(block.transactions, false, null, true ));
     console.log(unusedOutputs);
 }
 

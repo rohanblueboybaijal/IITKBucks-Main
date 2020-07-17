@@ -4,24 +4,21 @@ const Input = require('./transaction/input');
 const Output = require('./transaction/output');
 const Transaction = require('./transaction/transaction');
 const Block = require('./blockchain/block');
-const crptoHash = require('./utilities/crypto-hash')
+const cryptoHash = require('./utilities/crypto-hash.js')
 const { Int32ToBytes, Int64ToBytes, ByteToInt, HexToByteArray, ByteArrayToHex, HashToNumber } = require('./utilities/index');
 const now = require('nano-time');
+const util = require('util');
 
+console.log('Started Miner');
 const REWARD = 100000n;
 
-var transactions, target, parentHash, unusedOutputs;
+var transactions, target, parentHash, unusedOutputs, startFindingNonce;
 transactions = workerData.transactions;
 target =  workerData.target;
 parentHash = workerData.parentHash;
 unusedOutputs = workerData.unusedOutputs;
+startFindingNonce = workerData.startFindingNonce;
 
-parentPort.on('message', (newData) => {
-    transactions = newData.transactions;
-    target = newData.target;
-    parentHash = newData.parentHash;
-    unusedOutputs = newData.unusedOutputs;
-})
 
 // FINDING THE VALID TRANSACTIONS
 var minerFees = 0n;
@@ -57,12 +54,15 @@ outputs.push(output);
 var coinbaseTransaction = new Transaction({inputs:[], outputs:outputs});
 transactionsToMine.splice(0, 0, coinbaseTransaction);
 
+//console.log(util.inspect(transactionsToMine, false, null, true));
+
 //PREPARING TRANSACTION BYTE ARRAY AND BLOCK HEADER FOR MINING
 
 var buffer = Buffer.alloc(0);
 var buf;
 
 var numTransactions = transactionsToMine.length;
+console.log(numTransactions);
 buf = Buffer.from(Int32ToBytes(numTransactions));
 list = [buffer, buf];
 buffer = Buffer.concat(list);
@@ -72,9 +72,13 @@ for(let j=0; j<numTransactions; j++) {
     buf = Buffer.from(Int32ToBytes(transactionSize));
     list = [buffer, buf];
     buffer = Buffer.concat(list);
+
+    buf = Buffer.from(transactionsToMine[j].data);
+    list = [buffer, buf];
+    buffer = Buffer.concat(list);
 }
 var transactionByteArray = buffer;
-var hashedBlockData = crptoHash(buffer);
+var hashedBlockData = cryptoHash(buffer);
 
 var blockHeader = Buffer.alloc(116);
 var pos = 0;
@@ -98,11 +102,19 @@ pos += 32;
 
 // FIND NONCE
 const targetValue = HashToNumber(target);
-var header = mineBlock({blockHeader, targetValue});
-var list = [header, transactionByteArray];
-var blockBinaryData = Buffer.concat(list);
+if(startFindingNonce && transactionsToMine.length>1) {
+    console.log('Finding Nonce')
+    var header = mineBlock({blockHeader, targetValue});
+    var list = [header, transactionByteArray];
+    var blockBinaryData = Buffer.concat(list);
+    let block = new Block({blockBinaryData});
+    parentPort.postMessage({minedBlock : blockBinaryData});
+}
+else if(startFindingNonce){
+    console.log('Can start finding nonce but have no transactions');
+}
 
-parentPort.postMessage({minedBlock : blockBinaryData});
+//console.log(util.inspect(block, false, null, true));
 
 
 function mineBlock({blockHeader, targetValue}) {
@@ -122,7 +134,11 @@ function mineBlock({blockHeader, targetValue}) {
         var hash = cryptoHash(blockHeader);
         var hashNum = HashToNumber(hash);
 
-    } while(hashNum >= targetValue);
+        if(nonce%10000n == 0n) {
+           // console.log(nonce);
+        }
 
+    } while(hashNum >= targetValue);
+    console.log('Found ', nonce);
     return blockHeader;
 }
