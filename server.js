@@ -24,12 +24,13 @@ var miningInterval;
 
 /**********  LOADING PEERS FROM FILE  ***********/ 
 
-const MyURL = 'http://83f6b603f79c.ngrok.io';
-var PEERS = ['https://5d219da56ce4.ngrok.io'];
-
+const MyURL = 'http://73e497bb3c7f.ngrok.io';
+const URL = 'https://iitkbucks.pclub.in';
+var PEERS = ['https://iitkbucks.pclub.in'];
+;
 //PEERS.push('https://iitkbucks.pclub.in');
 
-var potentialPeers = ['https://5d219da56ce4.ngrok.io'];
+var potentialPeers = ['https://iitkbucks.pclub.in','https://dd1e805d83b7.ngrok.io'];
 
 var pendingTransactions = [];
 var unusedOutputs = {};
@@ -42,7 +43,6 @@ if(aliasMapString) {
     aliasMap = JSON.parse(aliasMapString);
 }
 
-/********** UTILITY ARRAY FOR EASY ACCESS TO PARENT HASH **********/
 var parentHashArray = [];
 parentHashArray.push('0'.repeat(64));
 
@@ -65,7 +65,7 @@ app.listen(8000, () => {
     console.log('Server started on port 8000');
     addPeer(potentialPeers.pop());
     console.log('Out of peer loop');
-    requestBlock(blockNum, PEERS[0]);
+    requestBlock(blockNum, URL);
 });
 
 /*********** UTILITY FOR SENDING REQUEST TO OTHERS TO ADD US AS PEERS ***********/ 
@@ -82,6 +82,7 @@ function addPeer(potentialPeer) {
             fs.writeFileSync('./peers.json', JSON.stringify(PEERS));
         }
         else {
+            console.log(`${potentialPeer} is full`);
             axios.get(potentialPeer + '/getPeers')
             .then((res) => {
                 let yetAnotherPeerList = JSON.parse(res.data);
@@ -114,7 +115,6 @@ function addPeer(potentialPeer) {
         //     requestBlock(blockIndex, PEERS[0]);
         // }
     })
-    return 0;
 }
 
 /***********  ENDPOINTS FOR COMMUNICATION ***********/
@@ -243,31 +243,50 @@ var binaryParser = bodyParser.raw({limit:1000000, type:'application/octet-stream
 app.post('/newBlock', binaryParser, (req,res) => {
     const blockData = req.body;
     let files = fs.readdirSync('./blocks');
-    blockNum = files.length;
+    var b = files.length;
     const block = new Block({index:null, parentHash:null, target:null,
                             transactions:null, blockBinaryData : blockData });
-    console.log('Recieved Block from peer');
+    console.log(`BLOCK : ${block.index} from peer `, req.url);
     
     var tempOutputsArray = {};
-    var result = Block.isValidBlock({block:block, 
-                            unusedOutputs:unusedOutputs,
-                            tempOutputsArray : tempOutputsArray,
-                            parentHash : parentHashArray[block.index] });
+    var result = false;
+    if(block.index >= b) {
+        result = Block.isValidBlock({block:block, 
+                                    unusedOutputs:unusedOutputs,
+                                    tempOutputsArray : tempOutputsArray,
+                                    parentHash : parentHashArray[block.index] });
+    }
     if(result) {
         res.status(200).send('Block is valid');
-        console.log('Received a block', block);
+        console.log('BLOCK : Valid', block.index);
+
+        for(peer of PEERS) {
+            axios({ method : 'post', url : peer + '/newBlock', data : block.blockBinaryData})
+        }
+
         if(blockNum<=files.length) {
             processBlock(block);
         }
-        //startMining({pendingTransactions, parentHash:parentHashArray[parentHashArray.length-1], unusedOutputs});
         worker.terminate();
         isMining = false;
         clearInterval(miningInterval);
         miningInterval = setIntervalAndExecute(mineBlock, INTERVAL);
 
     }
+    else if(block.index<b) {
+        let bi = fs.readFileSync('./blocks/block' + block.index + '.dat');
+        let check = Buffer.compare(bi, block.blockBinaryData);
+        if(!check) {
+            console.log(`BLOCK : ${block.index} exists and is valid`);
+            res.status(200).send('Block is valid');
+        }
+        else {
+            console.log(`BLOCK : ${block.index} exists; received invalid block`);
+            res.status(400).send('Block already exists and yours is invalid');
+        }
+    }
     else {
-        console.log('Got an invalid block');
+        console.log('BLOCK : Invalid block', block.index);
         res.status(400).send('Block is invalid');
     }
 });
@@ -293,14 +312,16 @@ app.post('/newTransaction', (req,res) => {
     var transaction = new Transaction({ inputs:inputs, outputs:outputs});
     if((getIndexOf({object:transaction, array:pendingTransactions}) === -1) && Transaction.isValidTransaction({transaction, unusedOutputs, tempOutputsArray:{}})) {
         res.status(200).send('Received Transaction');
-        console.log(transaction);
+
+        console.log('TRANSACTION : Received ', transaction.id);
+
         for(peer of PEERS) {
             axios({method : 'post', url : peer + '/newTransaction', data : JSON.stringify(data)})
             .then((res) => { })
             .catch((err) => {
-                console.log('Error while sending transaction ', err);
+                console.log('Error while sending transaction ', /*err*/);
             })
-            console.log('Number of pending Transactions : ', pendingTransactions.length);
+            console.log('PENDING : after new transaction : ', pendingTransactions.length);
             if(!pendingTransactions.length) {
                 pendingTransactions.push(transaction);
                 isMining = false;
@@ -313,12 +334,11 @@ app.post('/newTransaction', (req,res) => {
             }
 
             if(getIndexOf({object:transaction, array:pendingTransactions}) !== -1) {
-                console.log('transaction exists ');
+                console.log(`TRANSACTION : ${transaction.id} exists`);
             }
             if(!Transaction.isValidTransaction({transaction, unusedOutputs, tempOutputsArray:{}})){
-                console.log('invalid transaction');
+                console.log(`TRANSACTION : invalid ${transaction.id}`);
             }
-            //startMining({pendingTransactions, parentHash:parentHashArray[parentHashArray.length-1], unusedOutputs});
         }
     }
     else {
@@ -341,7 +361,6 @@ function processBlock(block) {
             let publicKey = unusedOutputs[key].publicKey;
             let ind = getIndexOf({object:obj, array:peerOutputs[publicKey]});
             peerOutputs[publicKey].splice(ind,1);
-
             delete unusedOutputs[key];
         }
         var outputs = transaction.outputs;
@@ -366,9 +385,7 @@ function processBlock(block) {
     var buf = block.blockBinaryData.slice(0,116);
     var blockHash = cryptoHash(buf);
     parentHashArray.push(blockHash);
-    console.log(unusedOutputs);
-    // console.log(blockNum, block.parentHash);
-    // console.log(blockNum, blockHash);
+    fs.writeFileSync('./unusedOutputs.json', JSON.stringify(unusedOutputs));
     fs.writeFileSync('./parentHash.json', JSON.stringify(parentHashArray));
     fs.writeFileSync('./blocks/block' + block.index + '.dat', block.blockBinaryData);
 }
@@ -384,22 +401,28 @@ function requestBlock(blockIndex, peer) {
         .then(function(res) {
             let block = new Block({blockBinaryData : res.data});
             tempOutputsArray = {};
-            console.log('Requesting Block ', blockIndex);
+            console.log('BLOCK : Requesting ', blockIndex);
             if(!blockIndex || Block.isValidBlock({
                         block:block,
                         unusedOutputs:unusedOutputs,
                         tempOutputsArray:tempOutputsArray,
                         parentHash:parentHashArray[blockIndex]}) && blockIndex == block.index) {
-                processBlock(block);
-                console.log(`Block ${blockIndex} verified`);
+                
+                let f = fs.readdirSync('./blocks');
+                let b = f.length;
+                
+                if(b>=block.index) {
+                    processBlock(block);
+                    console.log(`BLOCK : ${blockIndex} verified`);
 
-                if(!upToDate) {
-                    blockIndex += 1;
-                    requestBlock(blockIndex, PEERS[0]);
+                    if(!upToDate) {
+                        blockIndex += 1;
+                        requestBlock(blockIndex, PEERS[0]);
+                    }
                 }
             }
             else {
-                console.log(`Block ${blockNum} not verified`);
+                console.log(`BLOCK : ${blockNum} not verified`);
                 if(!upToDate) {
                     blockIndex += 1;
                     requestBlock(blockIndex, PEERS[0]);
@@ -410,70 +433,55 @@ function requestBlock(blockIndex, peer) {
         .catch( function(err) {
             console.log(err);
             getPendingTransactions();
-            console.log(`Block ${blockIndex} does not exist`);
+            console.log(`BLOCK : ${blockIndex} does not exist`);
             upToDate = true;
         });
 }
 
 function getPendingTransactions() {
     let pendingTransactionsList = [];
-    console.log('Ask for pending Transactions');
+    console.log('PENDING : Ask Peer');
     axios({
             method: 'get',
-            url: PEERS[0] + '/getPendingTransactions'
+            url: URL + '/getPendingTransactions'
         })
         .then((res) => {
             if(!res.data.length) {
-                return;
-            }
-            pendingTransactionsList = res.data;
-            //console.log(util.inspect(pendingTransactionsList, false, null, true /* enable colors */));
-            for(let transaction of pendingTransactionsList) {
-                let inputs = [], outputs = [];
-                for(let obj of transaction.inputs) {
-                    let input = new Input({transactionId:obj.transactionId, index:obj.index, signatureLength:Math.floor((obj.signature.length)/2), signature:obj.signature});
-                    inputs.push(input);
-                }
-                for(let obj of transaction.outputs) {
-                    let key = obj.recipient;
-                    let output = new Output({coins:obj.amount, publicKey:obj.recipient, publicKeyLength:key.length});
-                    outputs.push(output);
-                }
-                let t = new Transaction({inputs, outputs});
-                 if(getIndexOf({object:t, array:pendingTransactions}) == -1) {
-                    if(Transaction.isValidTransaction({transaction:t, unusedOutputs, tempOutputsArray:{}})) {
-                        pendingTransactions.push(t);
+                pendingTransactionsList = res.data;
+                for(let transaction of pendingTransactionsList) {
+                    let inputs = [], outputs = [];
+                    for(let obj of transaction.inputs) {
+                        let input = new Input({transactionId:obj.transactionId, index:obj.index, signatureLength:Math.floor((obj.signature.length)/2), signature:obj.signature});
+                        inputs.push(input);
+                    }
+                    for(let obj of transaction.outputs) {
+                        let key = obj.recipient;
+                        let output = new Output({coins:obj.amount, publicKey:obj.recipient, publicKeyLength:key.length});
+                        outputs.push(output);
+                    }
+                    let t = new Transaction({inputs, outputs});
+                    if(getIndexOf({object:t, array:pendingTransactions}) == -1) {
+                        if(Transaction.isValidTransaction({transaction:t, unusedOutputs, tempOutputsArray:{}})) {
+                            pendingTransactions.push(t);
+                        }
                     }
                 }
             }
 
-            console.log('Number of pending Transactions : ', pendingTransactions.length);
+            console.log('PENDING : Number after asking ', pendingTransactions.length);
+            miningInterval = setIntervalAndExecute(mineBlock, INTERVAL);
         })
         .catch((err) => {
-            console.log('Error while getting pendingTransactions : ', err);
+            console.log('PENDING : Error while asking ', err);
         });
-        miningInterval = setIntervalAndExecute(mineBlock, INTERVAL);
-    //startMining({pendingTransactions, parentHash:parentHashArray[parentHashArray.length-1], unusedOutputs});
 }
-
-// function startMining({pendingTransactions, parentHash, unusedOutputs}) {
-//     if(isMining) {
-//         console.log('Terminated');
-//         worker.terminate();
-//         isMining = false;
-//     }
-//     isMining = true;
-//     console.log('Before starting worker', pendingTransactions);
-//     worker = new Worker('./miner.js');
-//     worker.postMessage({ transactions : pendingTransactions, parentHash : parentHash, unusedOutputs : unusedOutputs});
-// }
 
 function setIntervalAndExecute(fn, t) {
     fn();
     return(setInterval(fn, t));
 }
 
-/******************************* TESTING **********************************/
+/********** Checking existing blocks and Mining new Blocks **********/
 
 function tempRequestBlock(blockIndex, block) {
     let tempOutputsArray = {};
@@ -487,10 +495,10 @@ function tempRequestBlock(blockIndex, block) {
             parentHash:parentHashArray[blockIndex]})
     ) {
         processBlock(block);
-        console.log(`Block ${blockIndex} verified`);
+        console.log(`LOCAL BLOCK : ${blockIndex} verified`);
     }
     else {
-        console.log(`Block ${blockIndex} not verified`);
+        console.log(`LOCAL BLOCK : ${blockIndex} not verified`);
         upToDate = true;
     }
 }
@@ -508,9 +516,9 @@ function mineBlock() {
     const LIMIT = 998000;
     var size = 0;
 
-    console.log('Number of pending Transactionswhen we try mining : ', pendingTransactions.length);
+    console.log('MINING 1 : Pending at start ', pendingTransactions.length);
 
-    console.log('Finding transactions to mine');
+    console.log('MINING 2 : Find transactions');
     for(let j=0; j<transactions.length; j++) {
         var obj = Transaction.isValidTransaction({transaction:transactions[j], unusedOutputs, tempOutputsArray});
         size += transactions[j].data.length + 4;
@@ -519,7 +527,8 @@ function mineBlock() {
             minerFees += obj.transactionFees;
         }
     }
-    console.log('Found transactions to mine');
+    pendingTransactions = transactionsToMine;
+    console.log('MINING 3 : Found transactions');
 
     /********** ADD COINBASE TRANSASCTION **********/
     const myPublicKey = fs.readFileSync('./Keys/public.pem', 'utf-8');
@@ -582,15 +591,21 @@ function mineBlock() {
     worker = new Worker('./miner.js');
     isMining = true;
     if(transactionsToMine.length>1) {
-        console.log('Telling the worker to mine');
+        console.log('MINING 4 : Worker can start');
         worker.postMessage({blockHeader : blockHeader, transactionByteArray});
     }
     else {
-        console.log('Not enough transactions to start mining');
+        console.log('MINING 4 : Not enough transactions');
     }
 
+    // Need this because pendingTransactions is just a reference to transactionsToMine and it will now include coinbase transaction
+    if(pendingTransactions.length) {
+        pendingTransactions.splice(0,1);
+    }
+    console.log('After finding transactions for mining : ', pendingTransactions.length);
+
     worker.on('message', (data) => {
-        console.log('Mined a Block');
+        console.log('MINING BLOCK : Mined a Block!!');
         const blockBinaryData = Buffer.from(data.minedBlock);
         const block = new Block({blockBinaryData:blockBinaryData});
         var tempOutputsArray = {};
@@ -600,11 +615,10 @@ function mineBlock() {
                     unusedOutputs:unusedOutputs, 
                     tempOutputsArray:tempOutputsArray, 
                     parentHash:parentHashArray[parentHashArray.length-1]})) {
-            console.log('Mined block is correct');
+            console.log(`MINING BLOCK : Mined block ${block.index} is correct!`);
             console.log(block);
             processBlock(block);
 
-            console.log('Mined block is correct');
             for(peer of PEERS) {
                 axios({ method : 'post', url : peer + '/newBlock', data : block.blockBinaryData})
                 .then((res) => {
@@ -614,17 +628,17 @@ function mineBlock() {
                         }
                     }
                     else {
-                        console.log('Block not accepted ');
+                        console.log('MINING BLOCK : Block not accepted ');
                         console.log(res);
                     }
                 })
                 .catch((err) => {
-                    console.log('Error while sending request ', err);
+                    console.log('MINING BLOCK : Error while sending request ', err);
                 })
             }
         }
         else {
-            console.log('Mined block is invalid');
+            console.log('MINING BLOCK : Mined block is invalid');
         }
     })
 }

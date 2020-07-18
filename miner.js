@@ -45,13 +45,7 @@ function findNonce({blockHeader, targetValue}) {
         var hash = cryptoHash(blockHeader);
         var hashNum = HashToNumber(hash);
 
-        // if(nonce%1000000n == 0n) {
-        //    console.log(nonce, hash);
-        // }
-
     } while(hashNum >= targetValue);
-    //console.log('Found ', nonce, timestamp);
     var hash = cryptoHash(blockHeader);
-    //console.log(hash);
     return blockHeader;
 }
