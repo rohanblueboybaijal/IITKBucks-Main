@@ -120,13 +120,8 @@ class Block {
 
     static isValidBlock({block, unusedOutputs, tempOutputsArray, parentHash}) {
         var minerFees = 0n;
-        // console.log('Block', block);
-        // console.log('unusedOutputs ', unusedOutputs);
-        // console.log('tempOutputsArray', tempOutputsArray);
-        // console.log('parentHash ', parentHash)
-        // Check that the parentHash is correct
         if(block.parentHash!=parentHash) {
-            console.log(block.index, 'parentHash does not match');
+            console.log(`CHECK BLOCK : ${block.index} parentHash does not match`);
             return false;
         }
 
@@ -152,7 +147,7 @@ class Block {
         const blockData = block.blockBinaryData.slice(116, size);
         const bodyHash = cryptoHash(blockData);
         if(block.hash!=bodyHash) {
-            console.log(block.index, 'bodyHash does not match');
+            console.log(`CHECK BLOCK : ${block.index} bodyHash does not match`);
             return false;
         }
         buf = Buffer.from(HexToByteArray(bodyHash));
@@ -184,13 +179,14 @@ class Block {
 
         const actualTargetValue = HashToNumber(TARGET);
         if(actualTargetValue != targetValue ) {
-            console.log(block.index, 'Wrong target being used' );
+            console.log(`BLOCK CHECK : ${block.index} Wrong target`);
             return false;
         }
         
         //if(hash != block.hash) return false; hash is the BODY HASH!!
         if(hashValue >= targetValue) {
-            console.log(block.index, 'hash is not below target',hash, hashValue, block.target);
+            //console.log(block.index, 'hash is not below target',hash, hashValue, block.target);
+            console.log(`BLOCK CHECK : ${block.index} : Big Hash : ${hash}`)
             return false;
         }
 
@@ -207,7 +203,7 @@ class Block {
                             tempOutputsArray : tempOutputsArray
                         });
             if(!obj.isValid) {
-                console.log(block.index, `transaction ${j} not valid`);
+                console.log(`BLOCK CHECK : ${block.index} : transaction ${j} not valid`);
                 return false;
             }
             else {
@@ -216,7 +212,7 @@ class Block {
         }
 
         if(BigInt(block.transactions[0].outputs[0].coins) > minerFees + 100000n) {
-            console.log(block.index, 'miner Fees invalid');
+            console.log(`BLOCK CHECK : ${block.index} : miner Fees invalid`);
             return false;
         }
         
