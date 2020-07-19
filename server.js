@@ -24,13 +24,14 @@ var miningInterval;
 
 /**********  LOADING PEERS FROM FILE  ***********/ 
 
-const MyURL = 'http://73968dff250b.ngrok.io';
+const MyURL = 'http://4843daa6552f.ngrok.io';
 const URL = 'https://iitkbucks.pclub.in';
 var PEERS = ['https://iitkbucks.pclub.in'];
 ;
 //PEERS.push('https://iitkbucks.pclub.in');
 
-var potentialPeers = ['https://iitkbucks.pclub.in','https://dd1e805d83b7.ngrok.io'];
+var potentialPeers = ['https://iitkbucks.pclub.in'];
+var triedPeers = [];
 
 var pendingTransactions = [];
 var unusedOutputs = {};
@@ -72,6 +73,11 @@ app.listen(8000, () => {
 
 function addPeer(potentialPeer) {
     let obj = {url : MyURL};
+    console.log('potential peers ', potentialPeers);
+    if(!triedPeers.includes(potentialPeer)) {
+        triedPeers.push(potentialPeer);
+    }
+
     axios.post(potentialPeer + '/newPeer', JSON.stringify(obj))
     .then((res) => {
         if(res.status===200) {
@@ -84,13 +90,19 @@ function addPeer(potentialPeer) {
         else {
             console.log(`${potentialPeer} is full`);
         }
+        if(!triedPeers.includes(potentialPeer)) {
+            triedPeers.push(potentialPeer);
+        }
 
         axios.get(potentialPeer + '/getPeers')
             .then((res) => {
                 let yetAnotherPeerList = res.data.peers;
                 for(let yetAnotherPeer of yetAnotherPeerList) {
-                    if(!potentialPeers.includes(yetAnotherPeer)) {
-                        potentialPeers.push(yetAnotherPeer);
+                    if(!potentialPeers.includes(yetAnotherPeer) && !triedPeers.includes(yetAnotherPeer)) {
+                        triedPeers.push(yetAnotherPeer);
+                        if(yetAnotherPeer !== MyURL) {
+                            potentialPeers.push(yetAnotherPeer);
+                        }
                     }
                 }
                 if(PEERS.length<5 && potentialPeers.length>0) {
@@ -102,21 +114,14 @@ function addPeer(potentialPeer) {
                 console.log('Error occurred while contacting peer ',potentialPeer, 'for more peers');
                 console.log(err);
             })
-
-        // if(PEERS.length ==5 || potentialPeers.length==0) {
-        //     requestBlock(blockNum, PEERS[0]);
-        // }
     })
     .catch((err) => {
         console.log('Error occurred while contacting peer', potentialPeer);
+        triedPeers.push(potentialPeer);
         if(potentialPeers.length>0) {
             let p = potentialPeers.pop();
             addPeer(p);
         }
-        // if(PEERS.length ==5 || potentialPeers.length==0) {
-        //     let blockIndex = blockNum;
-        //     requestBlock(blockIndex, PEERS[0]);
-        // }
     })
 }
 
@@ -249,7 +254,7 @@ app.post('/newBlock', binaryParser, (req,res) => {
     var b = files.length;
     const block = new Block({index:null, parentHash:null, target:null,
                             transactions:null, blockBinaryData : blockData });
-    console.log(`BLOCK : ${block.index} from peer `, req.url);
+    console.log(`BLOCK : ${block.index} from peer `);
     
     var tempOutputsArray = {};
     var result = false;
@@ -269,7 +274,7 @@ app.post('/newBlock', binaryParser, (req,res) => {
                 console.log(`Sending block ${block.index} to ${peer}`);
             })
             .catch((err) => {
-                console.log(`Error while sending block ${block.index} to ${peer}`);
+                //console.log(`Error while sending block ${block.index} to ${peer}`);
             })
         }
 
@@ -317,41 +322,43 @@ app.post('/newTransaction', (req,res) => {
                         publicKey : temp.recipient});
         outputs.push(output);
     }
-
     var transaction = new Transaction({ inputs:inputs, outputs:outputs});
+    console.log('TRANSACTION : Received ', transaction.id);
     if((getIndexOf({object:transaction, array:pendingTransactions}) === -1) && Transaction.isValidTransaction({transaction, unusedOutputs, tempOutputsArray:{}})) {
         res.status(200).send('Received Transaction');
 
-        console.log('TRANSACTION : Received ', transaction.id);
+        console.log('TRANSACTION : Verified ', transaction.id);
 
         for(peer of PEERS) {
             axios({method : 'post', url : peer + '/newTransaction', data : JSON.stringify(data)})
-            .then((res) => { })
+            .then((res) => {
+                if(res.status===200) {
+                    console.log(`Sent ${transaction.id} to ${peer}`);
+                }
+             })
             .catch((err) => {
-                console.log('Error while sending transaction ', peer);
             })
-            console.log('PENDING : after new transaction : ', pendingTransactions.length);
-            if(!pendingTransactions.length) {
-                pendingTransactions.push(transaction);
-                isMining = false;
-                worker.terminate();
-                clearInterval(miningInterval);
-                miningInterval = setIntervalAndExecute(mineBlock, INTERVAL);
-            }   
-            else {
-                pendingTransactions.push(transaction);
-            }
-
-            if(getIndexOf({object:transaction, array:pendingTransactions}) !== -1) {
-                console.log(`TRANSACTION : ${transaction.id} exists`);
-            }
-            if(!Transaction.isValidTransaction({transaction, unusedOutputs, tempOutputsArray:{}})){
-                console.log(`TRANSACTION : invalid ${transaction.id}`);
-            }
+        }
+        console.log('PENDING : after new transaction : ', pendingTransactions.length);
+        if(!pendingTransactions.length) {
+            pendingTransactions.push(transaction);
+            isMining = false;
+            worker.terminate();
+            clearInterval(miningInterval);
+            miningInterval = setIntervalAndExecute(mineBlock, INTERVAL);
+        }   
+        else {
+            pendingTransactions.push(transaction);
         }
     }
     else {
         res.sendStatus(400);
+    }
+    if(getIndexOf({object:transaction, array:pendingTransactions}) !== -1) {
+        console.log(`TRANSACTION : ${transaction.id} exists`);
+    }
+    if(!Transaction.isValidTransaction({transaction, unusedOutputs, tempOutputsArray:{}})){
+        console.log(`TRANSACTION : invalid ${transaction.id}`);
     }
 });
 
@@ -629,12 +636,10 @@ function mineBlock() {
             processBlock(block);
 
             for(peer of PEERS) {
-                axios({ method : 'post', url : peer + '/newBlock', data : block.blockBinaryData})
+                axios({ method : 'post', url : peer + '/newBlock', data : blockBinaryData})
                 .then((res) => {
                     if(res.status === 200) {
-                        if(!processed) {
-                            processed = true;
-                        }
+                        console.log(`MINING BLOCK : Sent block ${block.index} to ${peer}`);
                     }
                     else {
                         console.log('MINING BLOCK : Block not accepted ');
@@ -642,7 +647,7 @@ function mineBlock() {
                     }
                 })
                 .catch((err) => {
-                    console.log('MINING BLOCK : Error while sending request ', err);
+                    console.log('MINING BLOCK : Error while sending request ', peer);
                 })
             }
         }
