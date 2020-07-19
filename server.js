@@ -24,7 +24,7 @@ var miningInterval;
 
 /**********  LOADING PEERS FROM FILE  ***********/ 
 
-const MyURL = 'http://73e497bb3c7f.ngrok.io';
+const MyURL = 'http://73968dff250b.ngrok.io';
 const URL = 'https://iitkbucks.pclub.in';
 var PEERS = ['https://iitkbucks.pclub.in'];
 ;
@@ -83,23 +83,26 @@ function addPeer(potentialPeer) {
         }
         else {
             console.log(`${potentialPeer} is full`);
-            axios.get(potentialPeer + '/getPeers')
+        }
+
+        axios.get(potentialPeer + '/getPeers')
             .then((res) => {
-                let yetAnotherPeerList = JSON.parse(res.data);
+                let yetAnotherPeerList = res.data.peers;
                 for(let yetAnotherPeer of yetAnotherPeerList) {
                     if(!potentialPeers.includes(yetAnotherPeer)) {
                         potentialPeers.push(yetAnotherPeer);
                     }
                 }
+                if(PEERS.length<5 && potentialPeers.length>0) {
+                    let p = potentialPeers.pop();
+                    addPeer(p);
+                }
             })
             .catch((err) => {
                 console.log('Error occurred while contacting peer ',potentialPeer, 'for more peers');
+                console.log(err);
             })
-        }
-        if(PEERS.length<5 && potentialPeers.length>0) {
-            let p = potentialPeers.pop();
-            addPeer(p);
-        }
+
         // if(PEERS.length ==5 || potentialPeers.length==0) {
         //     requestBlock(blockNum, PEERS[0]);
         // }
@@ -262,6 +265,12 @@ app.post('/newBlock', binaryParser, (req,res) => {
 
         for(peer of PEERS) {
             axios({ method : 'post', url : peer + '/newBlock', data : block.blockBinaryData})
+            .then((res) => {
+                console.log(`Sending block ${block.index} to ${peer}`);
+            })
+            .catch((err) => {
+                console.log(`Error while sending block ${block.index} to ${peer}`);
+            })
         }
 
         if(blockNum<=files.length) {
@@ -319,7 +328,7 @@ app.post('/newTransaction', (req,res) => {
             axios({method : 'post', url : peer + '/newTransaction', data : JSON.stringify(data)})
             .then((res) => { })
             .catch((err) => {
-                console.log('Error while sending transaction ', /*err*/);
+                console.log('Error while sending transaction ', peer);
             })
             console.log('PENDING : after new transaction : ', pendingTransactions.length);
             if(!pendingTransactions.length) {
