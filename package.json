@@ -15,7 +15,7 @@
     "axios": "^0.19.2",
     "express": "^4.17.1",
     "hex-to-binary": "^1.0.1",
-    "lodash": "^4.17.19",
+    "lodash": "^4.17.21",
     "nano-time": "^1.0.0",
     "readline-sync": "^1.4.10",
     "save": "^2.4.0"
